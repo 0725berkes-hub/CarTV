@@ -48,8 +48,16 @@ struct LibraryView: View {
             }
             .task(id: env.settings.mytvEnabled) { if env.settings.mytvEnabled { env.vod.loadIfNeeded() } }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
-            .navigationDestination(for: VODMovie.self) { MovieDetailView(movie: $0) }
-            .navigationDestination(for: VODSeries.self) { SeriesDetailView(series: $0) }
+            // Every VOD screen is a value route on this one stack. Mixing closure-
+            // based links with value destinations made SwiftUI re-push the hub.
+            .navigationDestination(for: VODRoute.self) { route in
+                switch route {
+                case .hub:                    VODHubView()
+                case .movie(let m):           MovieDetailView(movie: m)
+                case .series(let s):          SeriesDetailView(series: s)
+                case .grid(let t, let m, let s): VODGridView(title: t, movies: m, series: s)
+                }
+            }
             .navigationDestination(for: VideoFolder.self) { FolderDetailView(folder: $0) }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { importFiles(urls) }
@@ -94,7 +102,7 @@ struct LibraryView: View {
 
     @ViewBuilder private var mytvSection: some View {
         Section {
-            NavigationLink { VODHubView() } label: {
+            NavigationLink(value: VODRoute.hub) {
                 HStack(spacing: Theme.s3) {
                     Image(systemName: "popcorn.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {

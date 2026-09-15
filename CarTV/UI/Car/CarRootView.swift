@@ -1,6 +1,7 @@
 import SwiftUI
 
-enum CarSection: Hashable, CaseIterable {
+enum CarSection: Hashable, CaseIterable, Identifiable {
+    var id: Self { self }
     case home, favorites, cast, library
     var title: LocalizedStringResource {
         switch self { case .home: "Home"; case .favorites: "Favorites"; case .cast: "Cast"; case .library: "Library" }
@@ -178,7 +179,7 @@ struct CarHeader: View {
             } else {
                 GlassEffectContainer(spacing: 6) {
                     HStack(spacing: 6) {
-                        ForEach(CarSection.allCases, id: \.self) { s in
+                        ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
                             let selected = section == s
                             Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
                                 Label(s.title, systemImage: s.symbol)

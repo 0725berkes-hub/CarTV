@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// All MyTV+ browse screens as one route type, registered once on the Library
+/// stack root. Value-based everywhere — no closure `NavigationLink`s.
+nonisolated enum VODRoute: Hashable {
+    case hub
+    case movie(VODMovie)
+    case series(VODSeries)
+    case grid(title: String, movies: [VODMovie], series: [VODSeries])
+}
+
 // MARK: - Hub (Movies / Series segmented, shelves by category)
 
 struct VODHubView: View {
