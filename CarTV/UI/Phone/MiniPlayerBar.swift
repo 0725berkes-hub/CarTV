@@ -62,6 +62,8 @@ struct MiniPlayerBar: View {
                             .opacity(playback.hasNext ? 1 : 0.35)
                             .accessibilityLabel("Next")
                     }
+                    glyph("xmark", size: expanded ? 15 : 13) { playback.stop() }
+                        .accessibilityLabel("Stop and close")
                 }
                 .padding(.trailing, 4)
             }

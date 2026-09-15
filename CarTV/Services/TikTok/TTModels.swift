@@ -23,7 +23,7 @@ nonisolated struct TTVideo: Identifiable, Hashable, Sendable, Codable {
     var webURL: URL { URL(string: "https://www.tiktok.com/@\(author.uniqueID)/video/\(id)")! }
 }
 
-nonisolated struct TTAuthor: Hashable, Sendable, Codable {
+nonisolated struct TTAuthor: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let uniqueID: String               // @handle
     let nickname: String

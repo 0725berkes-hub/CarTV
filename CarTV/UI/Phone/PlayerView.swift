@@ -205,13 +205,7 @@ struct PlayerView: View {
                         if playback.hasPrevious || playback.hasNext {
                             BigButton(symbol: "backward.end.fill", size: 16, enabled: playback.hasPrevious) { playback.previous(); scheduleHide() }
                         }
-                        if playback.snapshot.isSeekable {
-                            BigButton(symbol: "gobackward.10", size: 22) { skip(-10) }
-                        }
                         BigButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: 30, prominent: true) { playback.togglePlayPause(); scheduleHide() }
-                        if playback.snapshot.isSeekable {
-                            BigButton(symbol: "goforward.10", size: 22) { skip(10) }
-                        }
                         if playback.hasPrevious || playback.hasNext {
                             BigButton(symbol: "forward.end.fill", size: 16, enabled: playback.hasNext) { playback.next(); scheduleHide() }
                         }

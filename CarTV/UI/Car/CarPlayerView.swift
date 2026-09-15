@@ -40,10 +40,31 @@ struct CarPlayerView: View {
                 AudioOnlyStage(item: playback.current)
             }
 
-            // Tap the stage to show/hide controls. Only the stage — the controls
-            // layer below swallows its own taps so buttons never fall through.
-            Color.clear.contentShape(Rectangle()).ignoresSafeArea()
-                .onTapGesture { toggleControls() }
+            // Tap the stage to show/hide controls; double-tap left/right skips ±10s
+            // (YouTube style). Only the stage — the controls layer below swallows
+            // its own taps so buttons never fall through.
+            HStack(spacing: 0) {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2) { doubleTapSkip(-10) }
+                    .onTapGesture { toggleControls() }
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2) { doubleTapSkip(10) }
+                    .onTapGesture { toggleControls() }
+            }
+            .ignoresSafeArea()
+            .overlay {
+                if let (secs, fwd) = seekFlash {
+                    HStack(spacing: 8) {
+                        Image(systemName: fwd ? "goforward.10" : "gobackward.10")
+                        Text("\(fwd ? "+" : "-")\(secs)s").monospacedDigit()
+                    }
+                    .font(.system(size: m.compact ? 18 : 22, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .transition(.opacity.combined(with: .scale))
+                    .allowsHitTesting(false)
+                }
+            }
 
             stateOverlay
 
@@ -150,13 +171,7 @@ struct CarPlayerView: View {
                         if playback.hasPrevious || playback.hasNext {
                             CarCircleButton(symbol: "backward.end.fill", size: mid, enabled: playback.hasPrevious) { playback.previous(); bump() }
                         }
-                        if playback.snapshot.isSeekable {
-                            CarCircleButton(symbol: "gobackward.15", size: mid) { playback.skip(by: -15); bump() }
-                        }
                         CarCircleButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: big, prominent: true) { playback.togglePlayPause(); bump() }
-                        if playback.snapshot.isSeekable {
-                            CarCircleButton(symbol: "goforward.15", size: mid) { playback.skip(by: 15); bump() }
-                        }
                         if playback.hasPrevious || playback.hasNext {
                             CarCircleButton(symbol: "forward.end.fill", size: mid, enabled: playback.hasNext) { playback.next(); bump() }
                         }
@@ -180,6 +195,14 @@ struct CarPlayerView: View {
 
     /// Any control interaction restarts the auto-hide clock.
     private func bump() { scheduleHide() }
+
+    @State private var seekFlash: (Int, Bool)?
+    private func doubleTapSkip(_ delta: TimeInterval) {
+        guard playback.snapshot.isSeekable else { return }
+        playback.skip(by: delta)
+        withAnimation(.snappy(duration: 0.2)) { seekFlash = (Int(abs(delta)), delta > 0) }
+        Task { try? await Task.sleep(for: .milliseconds(650)); withAnimation { seekFlash = nil } }
+    }
 
     private func toggleControls() {
         withAnimation(.easeOut(duration: 0.18)) { controlsVisible.toggle() }
