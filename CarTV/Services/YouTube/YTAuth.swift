@@ -16,7 +16,8 @@ final class YTAuth {
     // Public client used by YouTube for TVs (well known; same as SmartTube / NewPipe).
     private static let clientID = "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com"
     private static let clientSecret = "SboVhoG9s0rNafixCSGGKXAT"
-    private static let scope = "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.force-ssl https://www.googleapis.com/auth/userinfo.profile"
+    // Device flow accepts only these; youtube.force-ssl is rejected with invalid_scope.
+    private static let scope = "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/userinfo.profile"
 
     private var accessToken: String?
     private var accessExpiry: Date = .distantPast
