@@ -154,17 +154,11 @@ struct PlayerView: View {
                         }
                     }
                     ControlButton(symbol: playback.gravity.symbol) { playback.cycleGravity(); scheduleHide() }
-                    if playback.current?.isLive == false {
+                    if playback.current?.ref.kind == .localVideo {
                         ControlButton(symbol: "shuffle", tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); scheduleHide() }
                         ControlButton(symbol: playback.repeatMode.symbol, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); scheduleHide() }
                     }
                     ControlButton(symbol: "ellipsis") { showTracks = true; hideTask?.cancel() }
-                    if playback.carIsConnected {
-                        Image(systemName: "car.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
-                            .frame(width: 36, height: 36)
-                            .glassEffect(.regular, in: Circle())
-                            .help("Casting to your car")
-                    }
                 }
                 .padding(.horizontal, Theme.s3).padding(.top, Theme.s1)
 

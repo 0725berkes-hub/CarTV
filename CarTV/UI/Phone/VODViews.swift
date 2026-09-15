@@ -294,23 +294,42 @@ struct MovieDetailView: View {
     }
 
     private var playRow: some View {
-        HStack(spacing: Theme.s2) {
-            Button { play(resume: true) } label: {
-                Label(resume != nil ? "Resume" : "Play", systemImage: "play.fill")
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            HStack(spacing: Theme.s2) {
+                Button { play(resume: true) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill")
+                        if let resume {
+                            Text("Resume · \(resume.clockString)")
+                        } else {
+                            Text("Play")
+                        }
+                    }
                     .font(Theme.Font.headline).frame(maxWidth: .infinity).frame(height: 48)
-            }
-            .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
-            if resume != nil {
-                Button { play(resume: false) } label: {
-                    Image(systemName: "arrow.counterclockwise").font(.system(size: 17, weight: .semibold)).frame(width: 48, height: 48)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
+
+                if resume != nil {
+                    Button { play(resume: false) } label: {
+                        Image(systemName: "arrow.counterclockwise").font(.system(size: 17, weight: .semibold)).frame(width: 48, height: 48)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Start over")
+                }
             }
+
+            // Trailer is its own labelled row so it can't be mistaken for Play.
             if let trailer = movie.trailer {
                 Button { playTrailer(trailer) } label: {
-                    Image(systemName: "film").font(.system(size: 17, weight: .semibold)).frame(width: 48, height: 48)
+                    Label("Watch trailer", systemImage: "film").font(Theme.Font.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity).frame(height: 40)
                 }
                 .buttonStyle(.glass)
+            }
+
+            if let p = env.progress.progress(for: item.ref), p.duration > 0, !p.completed, p.position > 5 {
+                ProgressBar(fraction: p.fraction, height: 3)
+                Text("\((p.duration - p.position).clockString) left").font(Theme.Font.label).foregroundStyle(Theme.inkMuted)
             }
         }
     }

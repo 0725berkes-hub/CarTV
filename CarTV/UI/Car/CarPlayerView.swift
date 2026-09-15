@@ -101,7 +101,7 @@ struct CarPlayerView: View {
                                 }
                             }
                             CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
-                            if playback.current?.isLive == false {
+                            if playback.current?.ref.kind == .localVideo {
                                 CarCircleButton(symbol: "shuffle", size: small, tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); bump() }
                                 CarCircleButton(symbol: playback.repeatMode.symbol, size: small, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); bump() }
                             }
