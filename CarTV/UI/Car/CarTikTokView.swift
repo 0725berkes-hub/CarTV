@@ -52,9 +52,11 @@ struct CarTikTokView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 120 : 150), spacing: Theme.s3)], spacing: Theme.s3) {
                             ForEach(items) { v in
                                 CarTikTokCard(video: v) {
-                                    let q = items.map { tt.playable($0, forCar: true) }
-                                    if let item = q.first(where: { $0.id == v.playableID }) {
-                                        playback.play(item, queue: q, origin: .car, resume: false)
+                                    Task { @MainActor in
+                                        let q = await tt.proxiedQueue(items, forCar: true)
+                                        if let item = q.first(where: { $0.id == v.playableID }) {
+                                            playback.play(item, queue: q, origin: .car, resume: false)
+                                        }
                                     }
                                 }
                                 .onAppear { if let i = items.firstIndex(where: { $0.id == v.id }) { tt.prefetchIfNeeded(feed, index: i) } }

@@ -75,23 +75,15 @@ struct TTFeedView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // A vertical TabView is a real paging scroll view: one page, hard snap,
-                // no partial pages. (.scrollTargetBehavior(.paging) uses the *container*
-                // height for its page size, which under the tab bar's safe-area inset
-                // is shorter than the pages we lay out — hence half-and-half.)
-                TabView(selection: $index) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { i, v in
-                        TTPage(video: v, isCurrent: i == index, size: geo.size, onCreator: { showCreator = v.author })
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .rotationEffect(.degrees(90))           // undo the container's rotation
-                            .tag(i)
-                    }
+                // UIKit vertical paging scroll view: page size == its own bounds, which we
+                // pin to the full screen. No rotation tricks, no safe-area drift.
+                VerticalPager(count: items.count, index: $index) { i in
+                    TTPage(video: items[i], isCurrent: i == index, size: geo.size, onCreator: { showCreator = items[i].author })
+                        // UIHostingController pages don't inherit the SwiftUI environment.
+                        .environment(env)
+                        .environment(playback)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(width: geo.size.height, height: geo.size.width)   // swapped: the TabView is rotated
-                .rotationEffect(.degrees(-90))
                 .frame(width: geo.size.width, height: geo.size.height)
-                .ignoresSafeArea()
                 .onChange(of: index, initial: true) { _, i in
                     guard items.indices.contains(i) else { return }
                     play(items[i], queue: items, tt: tt)
@@ -102,14 +94,17 @@ struct TTFeedView: View {
                 }
             }
         }
+        .ignoresSafeArea()
     }
 
     private func play(_ v: TTVideo, queue: [TTVideo], tt: TikTokService) {
-        let item = tt.playable(v)
-        guard playback.current?.id != item.id else { return }
-        // Queue = the whole loaded feed, so car next/prev and auto-advance walk the same list.
-        let q = queue.map { tt.playable($0) }
-        playback.play(item, queue: q, origin: .phone, resume: false, presentPlayer: false)
+        guard playback.current?.id != v.playableID else { return }
+        Task { @MainActor in
+            // Queue = the whole loaded feed, so car next/prev and auto-advance walk the same list.
+            let q = await tt.proxiedQueue(queue)
+            guard let item = q.first(where: { $0.id == v.playableID }), playback.current?.id != item.id else { return }
+            playback.play(item, queue: q, origin: .phone, resume: false, presentPlayer: false)
+        }
     }
 
     // MARK: Chrome (segments + settings)
@@ -307,6 +302,109 @@ extension Int {
         case ..<1_000: return "\(self)"
         case ..<1_000_000: return String(format: "%.1fK", Double(self) / 1_000).replacingOccurrences(of: ".0K", with: "K")
         default: return String(format: "%.1fM", Double(self) / 1_000_000).replacingOccurrences(of: ".0M", with: "M")
+        }
+    }
+}
+
+// MARK: - Vertical pager (UIKit)
+
+/// Full-bleed vertical paging, the way TikTok does it: a UIScrollView with
+/// isPagingEnabled whose page height is exactly its own bounds. Only the current
+/// page and its two neighbours are realised; the rest are recycled.
+struct VerticalPager<Page: View>: UIViewControllerRepresentable {
+    let count: Int
+    @Binding var index: Int
+    @ViewBuilder let page: (Int) -> Page
+
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+
+    func updateUIViewController(_ vc: Controller, context: Context) {
+        vc.count = count
+        vc.makePage = { i in AnyView(page(i)) }
+        vc.onIndexChange = { i in if index != i { index = i } }
+        vc.reload(scrollTo: index)
+    }
+
+    final class Controller: UIViewController, UIScrollViewDelegate {
+        var count = 0
+        var makePage: ((Int) -> AnyView)?
+        var onIndexChange: ((Int) -> Void)?
+
+        private let scroll = UIScrollView()
+        private var hosts: [Int: UIHostingController<AnyView>] = [:]
+        private var current = 0
+        private var lastLaidOutHeight: CGFloat = 0
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            scroll.isPagingEnabled = true
+            scroll.showsVerticalScrollIndicator = false
+            scroll.contentInsetAdjustmentBehavior = .never   // the whole point: page == bounds
+            scroll.bounces = true
+            scroll.delegate = self
+            scroll.frame = view.bounds
+            scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(scroll)
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            let h = view.bounds.height
+            scroll.contentSize = CGSize(width: view.bounds.width, height: h * CGFloat(count))
+            if h != lastLaidOutHeight {
+                lastLaidOutHeight = h
+                for (i, host) in hosts { host.view.frame = frame(for: i) }
+                scroll.setContentOffset(CGPoint(x: 0, y: h * CGFloat(current)), animated: false)
+            }
+        }
+
+        func reload(scrollTo target: Int) {
+            let h = view.bounds.height
+            scroll.contentSize = CGSize(width: view.bounds.width, height: h * CGFloat(count))
+            if target != current, h > 0 {
+                current = target
+                scroll.setContentOffset(CGPoint(x: 0, y: h * CGFloat(target)), animated: false)
+            }
+            realise(around: current)
+        }
+
+        private func frame(for i: Int) -> CGRect {
+            CGRect(x: 0, y: view.bounds.height * CGFloat(i), width: view.bounds.width, height: view.bounds.height)
+        }
+
+        /// Keep pages i-1…i+1 mounted; drop the rest. Re-render the mounted ones.
+        private func realise(around i: Int) {
+            let want = Set((max(0, i - 1)...min(count - 1, i + 1)).filter { $0 < count })
+            for (k, host) in hosts where !want.contains(k) {
+                host.willMove(toParent: nil); host.view.removeFromSuperview(); host.removeFromParent()
+                hosts.removeValue(forKey: k)
+            }
+            for k in want {
+                guard let make = makePage else { continue }
+                if let host = hosts[k] {
+                    host.rootView = make(k)
+                } else {
+                    let host = UIHostingController(rootView: make(k))
+                    host.view.backgroundColor = .black
+                    host.view.frame = frame(for: k)
+                    addChild(host); scroll.addSubview(host.view); host.didMove(toParent: self)
+                    hosts[k] = host
+                }
+            }
+        }
+
+        func scrollViewDidEndDecelerating(_ sv: UIScrollView) { settle() }
+        func scrollViewDidEndScrollingAnimation(_ sv: UIScrollView) { settle() }
+        func scrollViewDidEndDragging(_ sv: UIScrollView, willDecelerate decelerate: Bool) { if !decelerate { settle() } }
+
+        private func settle() {
+            let h = scroll.bounds.height
+            guard h > 0 else { return }
+            let i = Int((scroll.contentOffset.y / h).rounded())
+            let clamped = max(0, min(count - 1, i))
+            if clamped != current { current = clamped; onIndexChange?(clamped) }
+            realise(around: clamped)
         }
     }
 }

@@ -126,6 +126,22 @@ final class TikTokService {
         (forYou + following).first { $0.playableID == playableID }.map { playable($0) }
     }
 
+    /// Loopback-proxied item: the URL is http://127.0.0.1/tt/<token>, headers empty.
+    /// Use for actual playback; `playable(_:)` (direct URL) is for identity/queue shape.
+    func proxiedPlayable(_ v: TTVideo, forCar: Bool = false) async -> PlayableItem {
+        let direct = playable(v, forCar: forCar)
+        guard let local = try? await TTMediaProxy.shared.localURL(for: direct.url, headers: client.mediaHeaders) else { return direct }
+        return PlayableItem(tiktok: v, url: local, headers: [:])
+    }
+
+    /// Build a whole proxied queue at once (all routes registered, one server start).
+    func proxiedQueue(_ list: [TTVideo], forCar: Bool = false) async -> [PlayableItem] {
+        var out: [PlayableItem] = []
+        out.reserveCapacity(list.count)
+        for v in list { out.append(await proxiedPlayable(v, forCar: forCar)) }
+        return out
+    }
+
     /// Picks a rendition. Car gets ≤720p to keep decode light; phone gets the best.
     func playable(_ v: TTVideo, forCar: Bool = false) -> PlayableItem {
         var url = v.playURL

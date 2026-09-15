@@ -386,7 +386,9 @@ enum PlayableResolver {
             guard let uuid = UUID(uuidString: parts[1]), let item = env.library.item(for: PlayableRef(id: uuid, kind: .youtube)) else { return false }
             env.playback.play(item, origin: origin, resume: true)
         case "tiktok":
-            guard let uuid = UUID(uuidString: parts[1]), let item = env.library.item(for: PlayableRef(id: uuid, kind: .tiktok)) else { return false }
+            guard let uuid = UUID(uuidString: parts[1]),
+                  let v = (env.tiktok.forYou + env.tiktok.following).first(where: { $0.playableID == uuid }) else { return false }
+            let item = await env.tiktok.proxiedPlayable(v, forCar: origin == .car)
             env.playback.play(item, origin: origin, resume: false)
         default: return false
         }

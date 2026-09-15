@@ -83,8 +83,10 @@ struct TTCreatorView: View {
     }
 
     private func play(_ v: TTVideo) {
-        let q = videos.map { env.tiktok.playable($0) }
-        guard let item = q.first(where: { $0.id == v.playableID }) else { return }
-        playback.play(item, queue: q, origin: .phone, resume: false)
+        Task { @MainActor in
+            let q = await env.tiktok.proxiedQueue(videos)
+            guard let item = q.first(where: { $0.id == v.playableID }) else { return }
+            playback.play(item, queue: q, origin: .phone, resume: false)
+        }
     }
 }
