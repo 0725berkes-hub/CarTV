@@ -16,7 +16,16 @@ import OSLog
 @Observable
 final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
 
-    enum Feed: String { case forYou = "/foryou", following = "/following" }
+    enum Feed: Hashable {
+        case forYou, following, profile(handle: String)
+        var path: String {
+            switch self {
+            case .forYou: "/foryou"
+            case .following: "/following"
+            case .profile(let h): "/@\(h)"
+            }
+        }
+    }
 
     /// Captured pages, newest last. Consumers (TikTokService) drain these.
     var onItems: ((Feed, [TTVideo]) -> Void)?
@@ -62,7 +71,7 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
         guard let web else { return }
         currentFeed = feed
         isReady = false
-        web.load(URLRequest(url: URL(string: "https://www.tiktok.com\(feed.rawValue)")!))
+        web.load(URLRequest(url: URL(string: "https://www.tiktok.com\(feed.path)")!))
     }
 
     /// Ask the page for another batch. TikTok fetches on scroll; we scroll.
@@ -113,7 +122,13 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             let raw = (json["itemList"] as? [[String: Any]]) ?? (json["item_list"] as? [[String: Any]]) ?? []
             let items = raw.compactMap(TTParser.video)
-            let feed: Feed = url.contains("from_page=following") || currentFeed == .following ? .following : .forYou
+            // Route by what the page asked for, not by what we think we loaded — the
+            // For You page also prefetches other lists.
+            let feed: Feed
+            if url.contains("/api/post/item_list"), case .profile = currentFeed { feed = currentFeed }
+            else if url.contains("from_page=following") { feed = .following }
+            else if url.contains("/api/recommend/") { feed = .forYou }
+            else { feed = currentFeed }
             Task { @MainActor in
                 lastCaptureAt = .now
                 Log.network.info("TikTok engine: captured \(items.count) items from \(URL(string: url)?.path ?? url, privacy: .public)")

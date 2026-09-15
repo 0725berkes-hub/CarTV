@@ -134,6 +134,9 @@ nonisolated struct YTPlayerResponse: Sendable {
     let playabilityReason: String?
     let expiresAt: Date
     let captionTracks: [(name: String, lang: String, url: URL)]
+    /// Stats beacons YouTube uses to record history / resume position.
+    let playbackURL: URL?
+    let watchtimeURL: URL?
 
     init(json: JSONObject) throws {
         let vd = json["videoDetails"]
@@ -191,6 +194,9 @@ nonisolated struct YTPlayerResponse: Sendable {
         }
         formats = fmts
 
+        let tracking = json["playbackTracking"]
+        playbackURL = tracking["videostatsPlaybackUrl"]["baseUrl"].string.flatMap(URL.init)
+        watchtimeURL = tracking["videostatsWatchtimeUrl"]["baseUrl"].string.flatMap(URL.init)
         captionTracks = json["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].array.compactMap { t in
             guard let u = t["baseUrl"].string.flatMap(URL.init), let lang = t["languageCode"].string else { return nil }
             return (t["name"].text ?? lang, lang, u)

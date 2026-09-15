@@ -8,6 +8,7 @@ import OSLog
 @Observable
 final class YouTubeService {
     let auth = YTAuth()
+    lazy var history = YTWatchHistory(auth: auth)
     /// Set by onboarding when the user opted into YouTube sign-in; the YouTube tab
     /// presents the account sheet once it appears and clears this.
     var pendingSignInPrompt = false
@@ -202,6 +203,7 @@ final class YouTubeService {
         if let c = streamCache[video.id], c.expires > Date() {
             let r = Resolved(item: item(for: video, url: c.url), variants: c.variants.map { ($0.0, $0.1) }, captions: [])
             AppEnvironment.shared.playback.pendingQualityVariants = r.variants
+            history.begin(videoID: video.id, playbackURL: c.tracking.0, watchtimeURL: c.tracking.1)
             return r
         }
         var resp = try await api.player(videoID: video.id, accessToken: await auth.token())
@@ -235,8 +237,9 @@ final class YouTubeService {
         } else {
             throw YTError.unavailable(resp.playabilityReason ?? String(localized: "No playable streams"))
         }
-        streamCache[video.id] = (url, resp.expiresAt, variants)
+        streamCache[video.id] = (url, resp.expiresAt, variants, (resp.playbackURL, resp.watchtimeURL))
         AppEnvironment.shared.playback.pendingQualityVariants = variants.map { ($0.0, $0.1) }
+        history.begin(videoID: video.id, playbackURL: resp.playbackURL, watchtimeURL: resp.watchtimeURL)
         var enriched = video
         if enriched.title.isEmpty { enriched.title = resp.title }
         if enriched.channelName == nil { enriched.channelName = resp.author }

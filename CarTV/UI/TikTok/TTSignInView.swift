@@ -13,13 +13,16 @@ struct TTSignInView: View {
         NavigationStack {
             ZStack(alignment: .top) {
                 TTLoginWebView(progress: $progress) { store in
+                    guard !done else { return }        // cookie store fires many times; adopt once
+                    done = true
                     Task { @MainActor in
                         await env.tiktok.session.adopt(from: store)
-                        if env.tiktok.session.isSignedIn, !done {
-                            done = true
+                        if env.tiktok.session.isSignedIn {
                             env.tiktok.didSignIn()
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                             dismiss()
+                        } else {
+                            done = false
                         }
                     }
                 }

@@ -9,9 +9,7 @@ struct TTCreatorView: View {
     let author: TTAuthor
 
     @State private var videos: [TTVideo] = []
-    @State private var cursor = 0
-    @State private var hasMore = true
-    @State private var loading = false
+    @State private var loading = true
     @State private var error: String?
 
     var body: some View {
@@ -45,7 +43,18 @@ struct TTCreatorView: View {
         .navigationTitle("@\(author.uniqueID)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        .task { if videos.isEmpty { loadMore() } }
+        .task {
+            videos = env.tiktok.profiles[author.uniqueID] ?? []
+            loading = videos.isEmpty
+            env.tiktok.loadProfile(author.uniqueID)
+            try? await Task.sleep(for: .seconds(12))
+            if videos.isEmpty { loading = false; error = String(localized: "Couldn't load this creator's posts") }
+        }
+        .onChange(of: env.tiktok.profiles[author.uniqueID]?.count ?? 0) { _, _ in
+            videos = env.tiktok.profiles[author.uniqueID] ?? []
+            loading = false
+        }
+        .onDisappear { env.tiktok.leaveProfile(backTo: .forYou) }
     }
 
     private var header: some View {
@@ -69,18 +78,7 @@ struct TTCreatorView: View {
         .padding(.top, Theme.s4)
     }
 
-    private func loadMore() {
-        guard hasMore, !loading else { return }
-        loading = true
-        Task { @MainActor in
-            defer { loading = false }
-            do {
-                let (page, next) = try await env.tiktok.client.userPosts(secUID: author.secUID, cursor: cursor)
-                videos += page.items.filter { v in !videos.contains { $0.id == v.id } }
-                cursor = next; hasMore = page.hasMore && !page.items.isEmpty
-            } catch { self.error = error.localizedDescription }
-        }
-    }
+    private func loadMore() { env.tiktok.loadMoreProfile() }
 
     private func play(_ v: TTVideo) {
         Task { @MainActor in
