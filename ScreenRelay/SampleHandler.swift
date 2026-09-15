@@ -6,7 +6,7 @@ import CoreMedia
 /// Broadcast Upload Extension: captures the iPhone screen, encodes to H.264 with
 /// VideoToolbox, and streams frames to the CarTV app over loopback TCP (port 47311).
 /// Frame format matches `MirrorReceiver` in the app.
-final class SampleHandler: RPSampleHandler, @unchecked Sendable {
+final class SampleHandler: RPBroadcastSampleHandler, @unchecked Sendable {
     private var session: VTCompressionSession?
     private var connection: NWConnection?
     private let queue = DispatchQueue(label: "cartv.relay", qos: .userInteractive)
