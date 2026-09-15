@@ -100,6 +100,9 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             if result == "no-url" {
                 // Page hasn't fired its first request yet — nudge it.
                 self?.web?.evaluateJavaScript("window.__cartvScroll && window.__cartvScroll()") { _, _ in }
+            } else if result == "end", let self {
+                // List exhausted: deliver an empty page so the consumer clears its loading state.
+                Task { @MainActor in self.onItems?(self.currentFeed, []) }
             }
             Log.network.debug("TikTok engine: more(\(kind, privacy: .public)) → \(result, privacy: .public)")
         }
@@ -203,7 +206,7 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
         const res = await _fetch.apply(this, arguments);
         try {
           const u = typeof input === 'string' ? input : (input && input.url) || '';
-          if (wanted(u)) { remember(u); res.clone().text().then(t => { if (t && t.length > 2) post({ kind: 'items', url: u, body: t }); }); }
+          if (wanted(u)) { remember(u); res.clone().text().then(t => { if (t && t.length > 2) { noteCursor(u, t); post({ kind: 'items', url: u, body: t }); } }); }
         } catch (e) {}
         return res;
       };
@@ -215,7 +218,7 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       XMLHttpRequest.prototype.send = function () {
         this.addEventListener('load', function () {
           try { if (wanted(this.__cartvURL || '')) { remember(this.__cartvURL);
-                  if (this.responseText && this.responseText.length > 2) post({ kind: 'items', url: this.__cartvURL, body: this.responseText }); } } catch (e) {}
+                  if (this.responseText && this.responseText.length > 2) { noteCursor(this.__cartvURL, this.responseText); post({ kind: 'items', url: this.__cartvURL, body: this.responseText }); } } } catch (e) {}
         });
         return _send.apply(this, arguments);
       };
@@ -230,20 +233,34 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       // asked for more, re-fetch it from inside the page (same origin, same cookies)
       // instead of coaxing the page to scroll. Fresh msToken is substituted each time.
       window.__cartvLastURL = window.__cartvLastURL || {};
-      const remember = (u) => { try {
-        const k = /recommend\/item_list/.test(u) ? 'fyp' : /post\/item_list/.test(u) ? 'post' : /favorite\/item_list|user\/favorite/.test(u) ? 'liked' : /user\/collect|favorite_item_list/.test(u) ? 'saved' : null;
-        if (k) window.__cartvLastURL[k] = u;
-      } catch (e) {} };
-      const currentMsToken = () => (document.cookie.match(/(?:^|;\s*)msToken=([^;]+)/) || [])[1] || '';
+      window.__cartvCursor = window.__cartvCursor || {};
+      const kindOf = (u) => /recommend\/item_list/.test(u) ? 'fyp' : /post\/item_list/.test(u) ? 'post' : /favorite\/item_list|user\/favorite/.test(u) ? 'liked' : /user\/collect|favorite_item_list/.test(u) ? 'saved' : null;
+      const remember = (u) => { try { const k = kindOf(u); if (k) window.__cartvLastURL[k] = u; } catch (e) {} };
+      // Cursor lists (profile tabs) tell us when they're exhausted; the FYP never is.
+      const noteCursor = (u, t) => { try { const k = kindOf(u); if (!k || k === 'fyp') return; const j = JSON.parse(t);
+        window.__cartvCursor[k] = { cursor: String(j.cursor ?? ''), hasMore: j.hasMore !== false && j.has_more !== false }; } catch (e) {} };
       let inflight = false;
       window.__cartvMore = async function (kind) {
+        kind = kind || 'fyp';
+        if (kind !== 'fyp') {
+          // Profile grids page with a cursor that's inside the signed query, so we can't
+          // rewrite it. Scroll the grid to its end instead: the page's own observer fires
+          // the next signed request and the hook captures it.
+          const c = window.__cartvCursor[kind];
+          if (c && !c.hasMore) return 'end';
+          try { const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                window.scrollTo({ top: h, behavior: 'instant' });
+                setTimeout(() => window.scrollTo({ top: h + 4000, behavior: 'instant' }), 120);
+                setTimeout(() => window.scrollBy({ top: -200, behavior: 'instant' }), 260);
+                setTimeout(() => window.scrollTo({ top: document.body.scrollHeight + 4000, behavior: 'instant' }), 420); } catch (e) {}
+          return 'scrolled';
+        }
         if (inflight) return 'busy';
-        let u = window.__cartvLastURL[kind || 'fyp'];
+        const u = window.__cartvLastURL.fyp;
         if (!u) return 'no-url';
         inflight = true;
         try {
-          const ms = currentMsToken();
-          if (ms) u = u.replace(/([?&]msToken=)[^&]*/, '$1' + encodeURIComponent(ms));
+          // Re-fetch the exact URL the page signed: each call returns a fresh ranked batch.
           const r = await _fetch(u, { credentials: 'include', headers: { 'accept': 'application/json, text/plain, */*' } });
           const t = await r.text();
           if (t && t.length > 2) { post({ kind: 'items', url: u, body: t }); return 'ok:' + t.length; }

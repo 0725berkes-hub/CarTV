@@ -152,6 +152,8 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
         applyGravity()
     }
 
+    func setMuted(_ muted: Bool) { player?.audio?.isMuted = muted }
+
     private func applyGravity() {
         guard let player else { return }
         switch currentGravity {

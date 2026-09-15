@@ -81,6 +81,7 @@ protocol PlayerEngine: AnyObject {
     func selectSubtitleTrack(_ id: Int?)
     func addExternalSubtitle(url: URL)
     func setVideoGravity(_ gravity: VideoGravity)
+    func setMuted(_ muted: Bool)
 }
 
 nonisolated enum VideoGravity: String, CaseIterable, Sendable {

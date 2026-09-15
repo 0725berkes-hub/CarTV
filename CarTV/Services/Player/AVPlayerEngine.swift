@@ -232,6 +232,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         // AVPlayer cannot side-load subtitle files; PlaybackController overlays them via SubtitleController.
     }
 
+    func setMuted(_ muted: Bool) { player.isMuted = muted }
+
     func setVideoGravity(_ gravity: VideoGravity) {
         let g: AVLayerVideoGravity = switch gravity {
         case .fit: .resizeAspect

@@ -29,7 +29,8 @@ final class TikTokService {
     var onProfileItems: ((String, [TTVideo]) -> Void)?
     private(set) var loading: Set<Feed> = []
     private(set) var error: String?
-    private var seen: Set<String> = []
+    /// Per-feed dedupe. A video that's both Saved and Liked must appear in both lists.
+    private var seen: [Feed: Set<String>] = [:]
     private var waitTimers: [Feed: Task<Void, Never>] = [:]
 
     var pendingSignInPrompt = false
@@ -93,6 +94,26 @@ final class TikTokService {
     @MainActor
     func playerStarted(feed: Feed) { activeFeedForPlayer = feed }
 
+    /// Play `v` from `feed` on the phone pager. If the player already holds this feed's
+    /// queue, this is a plain index jump — no proxy round-trips, no cookie sync — so a
+    /// swipe starts the next video immediately. The queue is only (re)built when the
+    /// user switches feeds or the item isn't in the queue yet.
+    @MainActor
+    func playInline(_ v: TTVideo, from feed: Feed, queue list: [TTVideo]) {
+        let pb = AppEnvironment.shared.playback
+        guard pb.current?.id != v.playableID else { return }
+        if activeFeedForPlayer == feed, let existing = pb.queue.first(where: { $0.id == v.playableID }) {
+            pb.play(existing, origin: .phone, resume: false, presentPlayer: false)
+            return
+        }
+        Task { @MainActor in
+            let q = await proxiedQueue(list)
+            guard let item = q.first(where: { $0.id == v.playableID }), pb.current?.id != item.id else { return }
+            playerStarted(feed: feed)
+            pb.play(item, queue: q, origin: .phone, resume: false, presentPlayer: false)
+        }
+    }
+
     func items(for feed: Feed) -> [TTVideo] {
         switch feed { case .forYou: forYou; case .following: following; case .saved: saved; case .liked: liked }
     }
@@ -133,7 +154,7 @@ final class TikTokService {
     @MainActor
     func refresh(_ feed: Feed) async {
         guard session.isSignedIn else { return }
-        seen.removeAll()
+        seen[feed] = []
         switch feed { case .forYou: forYou = []; case .following: following = []; case .saved: saved = []; case .liked: liked = [] }
         error = nil
         loading.insert(feed)
@@ -153,16 +174,19 @@ final class TikTokService {
         guard let feed = activeFeedForPlayer, let i = pb.currentIndex else { return }
         if pb.queue.count - i <= 8 { loadMore(feed) }
         let list = items(for: feed)
-        for n in 1...2 where list.indices.contains(i + n) {
+        for n in 1...3 where list.indices.contains(i + n) {
             TTMediaProxy.prewarm(playable(list[i + n]).url, headers: client.mediaHeaders)
         }
     }
 
     private func append(_ new: [TTVideo], to feed: Feed) {
         var list = items(for: feed)
-        for v in new where !seen.contains(v.id) { seen.insert(v.id); list.append(v) }
-        // Saved/Liked are archives: newest first. Feeds keep server order.
-        if feed == .saved || feed == .liked { list.sort { $0.createTime > $1.createTime } }
+        var s = seen[feed] ?? []
+        // Server order, always. For You/Following is the ranked feed; Saved/Liked come
+        // back most-recently-saved/liked first (exactly what TikTok's own tabs show), and
+        // pages continue via the list's cursor, so appending keeps that order intact.
+        for v in new where !s.contains(v.id) { s.insert(v.id); list.append(v) }
+        seen[feed] = s
         switch feed { case .forYou: forYou = list; case .following: following = list; case .saved: saved = list; case .liked: liked = list }
     }
 
@@ -200,7 +224,7 @@ final class TikTokService {
     func signOut() {
         engine.stop()
         session.signOut()
-        forYou = []; following = []; saved = []; liked = []; seen = []; error = nil; loading = []
+        forYou = []; following = []; saved = []; liked = []; seen = [:]; error = nil; loading = []
     }
 
     // MARK: Save to library

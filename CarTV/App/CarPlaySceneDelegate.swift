@@ -16,6 +16,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         to window: CPWindow
     ) {
         Log.carplay.info("CarPlay connected WITH window \(window.bounds.debugDescription, privacy: .public)")
+        MyTVService.warmRelay()
         Task { await MyTVService.refreshForCurrentNetwork(env: .shared) }
         AppEnvironment.shared.carPlay.connect(
             interfaceController: interfaceController,

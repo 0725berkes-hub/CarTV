@@ -22,6 +22,19 @@ enum MyTVService {
     nonisolated private static let assetRelay = "https://cartv-relay.hankus1.workers.dev/p/"
     nonisolated private static let blockedHosts: Set<String> = ["media.appmytv.com", "androidapi.appmytv.com", "api.appmytv.com", "appmytv.com"]
 
+    /// The relay sleeps when idle (free tier). Poke it when the app comes forward or
+    /// CarPlay connects so it's warm by the time a channel is tapped. Fire-and-forget.
+    @MainActor private static var lastWake: Date = .distantPast
+    nonisolated static func warmRelay() {
+        Task { @MainActor in
+            guard Date().timeIntervalSince(lastWake) > 120 else { return }
+            lastWake = .now
+            var req = URLRequest(url: relayM3U.deletingLastPathComponent(), timeoutInterval: 30)
+            req.httpMethod = "HEAD"
+            _ = try? await URLSession.shared.data(for: req)
+        }
+    }
+
     /// Relay URL for a blocked MyTV+ asset, or nil when the host doesn't need one.
     nonisolated static func relayURL(for url: URL) -> URL? {
         guard let host = url.host, blockedHosts.contains(host) else { return nil }

@@ -29,6 +29,9 @@ final class PlaybackController {
     private(set) var snapshot = PlayerSnapshot()
     private(set) var engineKind: PlayerEngineKind = .avPlayer
     private(set) var gravity: VideoGravity = .fit
+    /// Feed-style mute (TikTok tab). Cleared when a non-feed item starts.
+    private(set) var isMuted = false
+    func setMuted(_ m: Bool) { isMuted = m; engine.setMuted(m) }
     private(set) var isFallingBack = false
     /// True while the full-screen phone player is presented.
     var isPhonePlayerPresented = false {
@@ -528,6 +531,8 @@ final class PlaybackController {
             videoViewRevision &+= 1
         }
         engine.setVideoGravity(gravity)
+        if item.ref.kind != .tiktok, isMuted { isMuted = false }
+        engine.setMuted(isMuted)
         var options = PlayerOptions()
         options.softwareDecoding = settings.softwareDecoding
         options.networkCachingMs = item.isLive ? 1000 : 1500

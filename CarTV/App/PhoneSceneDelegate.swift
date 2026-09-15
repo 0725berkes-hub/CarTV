@@ -54,6 +54,7 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         AppEnvironment.shared.playback.phoneIsForeground = true
+        MyTVService.warmRelay()
         Task { await MyTVService.refreshForCurrentNetwork(env: .shared) }
     }
 

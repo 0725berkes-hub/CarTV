@@ -130,7 +130,7 @@ actor TTMediaProxy {
     nonisolated static func prewarm(_ url: URL, headers: [String: String]) {
         var r = URLRequest(url: url)
         headers.forEach { r.setValue($1, forHTTPHeaderField: $0) }
-        r.setValue("bytes=0-262143", forHTTPHeaderField: "Range")
+        r.setValue("bytes=0-524287", forHTTPHeaderField: "Range")
         upstream.dataTask(with: r) { _, _, _ in }.resume()
     }
 
