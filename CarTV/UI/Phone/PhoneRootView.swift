@@ -11,9 +11,9 @@ struct PhoneRootView: View {
     @State private var showAddSource = false
     @State private var showOnboarding = false
     @State private var importBanner: ImportBanner?
+    @State private var playerShown = false
 
     var body: some View {
-        @Bindable var playback = playback
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house.fill", value: .home) {
                 HomeView(showAddSource: $showAddSource)
@@ -34,11 +34,17 @@ struct PhoneRootView: View {
         .tabViewBottomAccessory(isEnabled: playback.isActive) {
             MiniPlayerBar()
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
         .tint(Theme.accent)
         .preferredColorScheme(settings.appearance.colorScheme)
-        .fullScreenCover(isPresented: $playback.isPhonePlayerPresented) {
+        .fullScreenCover(isPresented: $playerShown) {
             PlayerView()
+        }
+        .onChange(of: playback.isPhonePlayerPresented, initial: true) { _, shown in
+            if playerShown != shown { playerShown = shown }
+        }
+        .onChange(of: playerShown) { _, shown in
+            // Swipe-down / system dismissal → keep the controller in sync.
+            if playback.isPhonePlayerPresented != shown { playback.isPhonePlayerPresented = shown }
         }
         .sheet(isPresented: $showAddSource) {
             AddSourceSheet()
