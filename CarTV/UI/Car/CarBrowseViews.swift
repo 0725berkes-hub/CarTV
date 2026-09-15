@@ -206,6 +206,21 @@ struct CarGrid: View {
 
     private var showIndex: Bool { items.count > 24 }
 
+    struct IndexSection: Identifiable { let key: String; let items: [PlayableItem]; var id: String { key } }
+
+    /// Items sorted by title, grouped by first letter (digits/symbols → "#", last).
+    private var sections: [IndexSection] {
+        let sorted = items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        var groups: [String: [PlayableItem]] = [:]
+        for it in sorted { groups[it.title.indexKey, default: []].append(it) }
+        let keys = groups.keys.sorted { a, b in
+            if a == "#" { return false }
+            if b == "#" { return true }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
+        return keys.map { IndexSection(key: $0, items: groups[$0] ?? []) }
+    }
+
     /// Compact Play / Shuffle pills, like the header actions in Music and TV.
     @ViewBuilder private var shuffleRow: some View {
         if shuffleable, items.count > 1 {
@@ -270,7 +285,7 @@ struct CarGrid: View {
                     shuffleRow
                     if showIndex {
                         LazyVStack(alignment: .leading, spacing: Theme.s4, pinnedViews: .sectionHeaders) {
-                            ForEach(sections, id: \.key) { section in
+                            ForEach(sections) { section in
                                 Section {
                                     LazyVGrid(columns: cols, spacing: Theme.s3) {
                                         ForEach(section.items) { item in
