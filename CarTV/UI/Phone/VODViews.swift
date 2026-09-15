@@ -299,8 +299,7 @@ struct MovieDetailView: View {
     }
 
     private func playTrailer(_ url: URL) {
-        var t = PlayableItem(movie: movie)
-        t = PlayableItem(trailer: url, of: t)
+        let t = PlayableItem(trailer: url, of: item)
         playback.play(t, queue: [t], origin: .phone, resume: false)
     }
 }
