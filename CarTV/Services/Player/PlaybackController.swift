@@ -197,7 +197,7 @@ final class PlaybackController {
                 }
             }
             self.start(on: kind, item: item, startAt: startAt)
-            AudioSessionController.activate()
+            _ = await AudioSessionController.activate() as Bool
             self.startProgressTimer()
             self.subtitles.reset(for: item)
             self.progress.touch(item.ref)
