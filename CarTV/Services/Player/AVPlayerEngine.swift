@@ -140,6 +140,22 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func play() { userPaused = false; player.play() }
     func pause() { userPaused = true; player.pause() }
 
+    // MARK: Quality cap
+
+    /// Tallest variant AVPlayer may pick, in pixels. nil = Auto. Sticky across
+    /// items so a user's 720p choice survives channel/episode changes.
+    private var maxHeight: Int?
+
+    func setMaxResolution(height: Int?) {
+        maxHeight = height
+        guard let item else { return }
+        if let h = height {
+            item.preferredMaximumResolution = CGSize(width: CGFloat(h) * 16 / 9, height: CGFloat(h))
+        } else {
+            item.preferredMaximumResolution = .zero
+        }
+    }
+
     var makeMirrorViewSupported: Bool { true }
 
     func makeMirrorView() -> UIView? {
