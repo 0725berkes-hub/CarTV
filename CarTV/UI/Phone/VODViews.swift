@@ -54,8 +54,9 @@ struct VODHubView: View {
         .navigationTitle("MyTV+")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: Text("Search movies and series"))
-        .navigationDestination(for: VODMovie.self) { MovieDetailView(movie: $0) }
-        .navigationDestination(for: VODSeries.self) { SeriesDetailView(series: $0) }
+        // VODMovie / VODSeries destinations are registered on the owning
+        // NavigationStack root (LibraryView) — declaring them here on a pushed
+        // view is silently ignored by SwiftUI.
         .refreshable { vod.loadIfNeeded(force: true) }
         .task { vod.loadIfNeeded() }
     }

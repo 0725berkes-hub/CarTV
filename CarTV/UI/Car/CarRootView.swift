@@ -128,7 +128,6 @@ struct CarNavHost<Root: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             root()
-                .background(CarBackdrop())
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: CarRoute.self) { route in
                     Group {
@@ -152,8 +151,8 @@ struct CarNavHost<Root: View>: View {
                 }
         }
         .scrollContentBackground(.hidden)
-        .background(Color.clear)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .background(TransparentHost())
         .environment(\.carPush, CarPush { path.append($0) })
     }
 }
@@ -256,5 +255,26 @@ struct CarFocusButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+
+/// Walks up from its own UIView and clears the opaque backgrounds UIKit gives
+/// UINavigationController / UIHostingController, so the single CarBackdrop at the
+/// root shows through as one continuous gradient.
+private struct TransparentHost: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(); v.backgroundColor = .clear; v.isUserInteractionEnabled = false
+        DispatchQueue.main.async { clear(from: v) }
+        return v
+    }
+    func updateUIView(_ v: UIView, context: Context) { DispatchQueue.main.async { clear(from: v) } }
+    private func clear(from v: UIView) {
+        var node: UIView? = v
+        var hops = 0
+        while let n = node, hops < 12 {
+            if n.backgroundColor != nil, n.backgroundColor != .clear { n.backgroundColor = .clear }
+            node = n.superview; hops += 1
+        }
     }
 }

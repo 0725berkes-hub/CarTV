@@ -48,6 +48,8 @@ struct LibraryView: View {
             }
             .task(id: env.settings.mytvEnabled) { if env.settings.mytvEnabled { env.vod.loadIfNeeded() } }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
+            .navigationDestination(for: VODMovie.self) { MovieDetailView(movie: $0) }
+            .navigationDestination(for: VODSeries.self) { SeriesDetailView(series: $0) }
             .navigationDestination(for: VideoFolder.self) { FolderDetailView(folder: $0) }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { importFiles(urls) }

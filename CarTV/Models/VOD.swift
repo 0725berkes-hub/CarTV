@@ -3,7 +3,7 @@ import Foundation
 /// Movies and series from the MyTV+ catalogue. Plain value types held in memory
 /// and cached as JSON on disk (not SwiftData — 12K movies churn daily).
 
-struct VODMovie: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct VODMovie: Codable, Hashable, Identifiable, Sendable {
     let id: String
     let title: String
     let category: String
@@ -24,7 +24,7 @@ struct VODMovie: Codable, Hashable, Identifiable, Sendable {
     nonisolated var playableID: UUID { UUID.stable("movie:\(id)") }
 }
 
-struct VODSeries: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct VODSeries: Codable, Hashable, Identifiable, Sendable {
     let id: String
     let title: String
     let category: String
@@ -34,7 +34,7 @@ struct VODSeries: Codable, Hashable, Identifiable, Sendable {
     let poster: URL?
 }
 
-struct VODSeason: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct VODSeason: Codable, Hashable, Identifiable, Sendable {
     let id: String
     let seriesID: String
     let name: String            // "1", "2", …
@@ -44,7 +44,7 @@ struct VODSeason: Codable, Hashable, Identifiable, Sendable {
     let poster: URL?
 }
 
-struct VODEpisode: Codable, Hashable, Identifiable, Sendable {
+nonisolated struct VODEpisode: Codable, Hashable, Identifiable, Sendable {
     let id: String
     let seasonID: String
     let name: String            // "S01E01"
@@ -62,7 +62,7 @@ struct VODEpisode: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-struct SubtitleLinks: Codable, Hashable, Sendable {
+nonisolated struct SubtitleLinks: Codable, Hashable, Sendable {
     var english: URL?
     var arabic: URL?
     var kurdish: URL?
