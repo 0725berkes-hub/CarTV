@@ -52,7 +52,6 @@ struct OnboardingView: View {
         ZStack {
             Color(red: 0.03, green: 0.04, blue: 0.06).ignoresSafeArea()
             MeshBackdrop(tint: current.tint).ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.8), value: page)
 
             VStack(spacing: 0) {
                 // Top: progress + skip
@@ -180,7 +179,13 @@ struct OnboardingView: View {
 
 // MARK: - Chrome
 
-/// Slow-drifting blobs of the page tint. Cheap: three blurred circles.
+/// Slow-drifting glow in the page tint.
+///
+/// Performance: `.blur` on large shapes is re-rasterised every frame it animates,
+/// which fought the TabView slide and produced a visible hitch on page change.
+/// Radial gradients are GPU-cheap and need no blur pass, and the whole backdrop is
+/// flattened with `drawingGroup` so the compositor moves one texture. Colour
+/// changes are animated here (not by the caller) so they don't retrigger layout.
 private struct MeshBackdrop: View {
     let tint: Color
     @State private var t: CGFloat = 0
@@ -188,14 +193,20 @@ private struct MeshBackdrop: View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             ZStack {
-                Circle().fill(tint.opacity(0.55)).frame(width: w * 0.9)
-                    .blur(radius: 90).offset(x: -w * 0.25 + t * 30, y: -h * 0.28 + t * 20)
-                Circle().fill(tint.opacity(0.28)).frame(width: w * 0.7)
-                    .blur(radius: 80).offset(x: w * 0.35 - t * 25, y: -h * 0.05 - t * 15)
-                Circle().fill(Color.white.opacity(0.05)).frame(width: w * 0.8)
-                    .blur(radius: 70).offset(x: w * 0.1 + t * 10, y: h * 0.45)
+                RadialGradient(colors: [tint.opacity(0.55), .clear], center: .center, startRadius: 0, endRadius: w * 0.55)
+                    .frame(width: w * 1.3, height: w * 1.3)
+                    .offset(x: -w * 0.25 + t * 30, y: -h * 0.28 + t * 20)
+                RadialGradient(colors: [tint.opacity(0.30), .clear], center: .center, startRadius: 0, endRadius: w * 0.45)
+                    .frame(width: w * 1.1, height: w * 1.1)
+                    .offset(x: w * 0.35 - t * 25, y: -h * 0.05 - t * 15)
+                RadialGradient(colors: [Color.white.opacity(0.05), .clear], center: .center, startRadius: 0, endRadius: w * 0.5)
+                    .frame(width: w * 1.2, height: w * 1.2)
+                    .offset(x: w * 0.1 + t * 10, y: h * 0.45)
             }
+            .frame(width: w, height: h)
+            .drawingGroup()
         }
+        .animation(.easeInOut(duration: 0.8), value: tint)
         .onAppear { withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { t = 1 } }
         .allowsHitTesting(false)
     }
@@ -256,10 +267,14 @@ private struct DisplayFrame<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         ZStack {
+            // Glow as a gradient, not a shadow: shadows are blur passes re-run while
+            // the frame animates scale. This is one static layer that just fades.
+            RoundedRectangle(cornerRadius: 40, style: .continuous)
+                .fill(RadialGradient(colors: [tint.opacity(0.45), .clear], center: .center, startRadius: 40, endRadius: 260))
+                .padding(-30).offset(y: 18)
+                .opacity(active ? 1 : 0.4)
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(Color(red: 0.06, green: 0.075, blue: 0.10))
-                .shadow(color: tint.opacity(0.35), radius: 40, y: 18)
-                .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
             content()
                 .padding(14)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
