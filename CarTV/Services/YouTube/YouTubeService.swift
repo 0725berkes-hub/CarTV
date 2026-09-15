@@ -55,7 +55,8 @@ final class YouTubeService {
 
     func fetch(_ feed: Feed, continuation: String? = nil) async throws -> YTPage {
         let key = "\(feed)"
-        if continuation == nil, let c = pageCache[key], Date().timeIntervalSince(c.at) < pageTTL { return c.page }
+        let ttl: TimeInterval = { if case .home = feed { return 90 } else { return pageTTL } }()
+        if continuation == nil, let c = pageCache[key], Date().timeIntervalSince(c.at) < ttl { return c.page }
         let token = await auth.token()
         let json: JSONObject
         switch feed {

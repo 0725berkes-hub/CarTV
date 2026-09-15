@@ -22,6 +22,7 @@ enum CarRoute: Hashable {
     case seriesDetail(VODSeries)      // seasons + episodes
     case favorites
     case ytVideo(YTVideo)             // YouTube watch page (title, channel, up next)
+    case ytPlaylist(YTPlaylist)       // YouTube playlist / mix
 
     var title: String {
         switch self {
@@ -35,6 +36,7 @@ enum CarRoute: Hashable {
         case .seriesDetail(let s): s.title
         case .favorites: String(localized: "Favorites")
         case .ytVideo(let v): v.title
+        case .ytPlaylist(let p): p.title
         }
     }
 }
@@ -178,6 +180,7 @@ struct CarNavHost<Root: View>: View {
                     case .seriesDetail(let s): CarSeriesDetailView(series: s)
                     case .favorites:           CarFavoritesView()
                     case .ytVideo(let v):      CarYTWatchView(video: v)
+                    case .ytPlaylist(let p):   CarYTPlaylistView(playlist: p)
                     }
                 }
                 .id(route)

@@ -16,6 +16,7 @@ nonisolated struct YTVideo: Identifiable, Hashable, Sendable {
     var publishedText: String?
     var isLive = false
     var progressFraction: Double? = nil   // from history / resume
+    var mixPlaylistID: String? = nil      // RD… when YouTube suggests this as a radio seed
 
     var watchURL: URL { URL(string: "https://www.youtube.com/watch?v=\(id)")! }
 }

@@ -64,14 +64,28 @@ struct CarYouTubeView: View {
         VStack(spacing: 0) {
             Group {
                 if let page {
-                    var seen = Set<String>()
-                    let videos = page.flatItems.compactMap { item -> YTVideo? in
-                        guard case .video(let v) = item, seen.insert(v.id).inserted else { return nil }
-                        return v
-                    }
+                    let allVideos = page.flatItems.compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+                    let columns = [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)]
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
-                            ForEach(videos) { v in CarYTCard(video: v, queue: videos) }
+                        LazyVStack(alignment: .leading, spacing: Theme.s4) {
+                            ForEach(page.shelves) { shelf in
+                                // Same shelves as YouTube's own Home: Recommended, Listen again,
+                                // your mixes, topics… Titled shelves get a header; mixes and
+                                // playlists render as cards next to the videos.
+                                if let t = shelf.title, page.shelves.count > 1 {
+                                    Text(t).font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.top, Theme.s1)
+                                }
+                                let vids = shelf.items.compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+                                LazyVGrid(columns: columns, spacing: Theme.s4) {
+                                    ForEach(shelf.items) { item in
+                                        switch item {
+                                        case .video(let v): CarYTCard(video: v, queue: vids.isEmpty ? allVideos : vids)
+                                        case .playlist(let p): CarYTPlaylistCard(playlist: p)
+                                        case .channel: EmptyView()
+                                        }
+                                    }
+                                }
+                            }
                             // Pull the next page of every shelf that still has one.
                             if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil || (feed == .home && refills < 6) {
                                 ProgressView().frame(maxWidth: .infinity, minHeight: 80).task { await loadMore() }
@@ -245,6 +259,77 @@ struct CarYTWatchView: View {
         Task {
             guard let r = try? await env.youtube.resolve(video) else { return }
             playback.play(r.item, queue: [r.item] + rest.compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
+        }
+    }
+}
+
+
+/// Playlist / Mix card for the car grid. Opens the playlist page.
+struct CarYTPlaylistCard: View {
+    @Environment(\.carMetrics) private var m
+    @Environment(\.carPush) private var push
+    let playlist: YTPlaylist
+    var body: some View {
+        Button { push(CarRoute.ytPlaylist(playlist)) } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .bottomTrailing) {
+                    Color.clear.overlay {
+                        RemoteImage(url: playlist.thumbnailURL, targetSize: CGSize(width: 640, height: 360), contentMode: .fill) {
+                            ZStack { TileTint.gradient(for: playlist.title); Image(systemName: "play.square.stack").font(.system(size: 30, weight: .light)).foregroundStyle(.white.opacity(0.7)) }
+                        }
+                    }.clipped()
+                    HStack(spacing: 4) { Image(systemName: playlist.isMix ? "infinity" : "list.bullet"); Text(playlist.isMix ? "Mix" : (playlist.videoCountText ?? "Playlist")) }
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 4)).padding(6)
+                }
+                .aspectRatio(16/9, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
+                Text(playlist.title).font(.system(size: m.compact ? 12.5 : 14.5, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                Text(playlist.channelName ?? (playlist.isMix ? String(localized: "YouTube Mix") : "")).font(.system(size: m.compact ? 11 : 12.5)).foregroundStyle(Theme.inkMuted).lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CarFocusButtonStyle(radius: Theme.radiusS))
+    }
+}
+
+/// Car playlist / mix page: Play all + Shuffle, then the videos.
+struct CarYTPlaylistView: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(PlaybackController.self) private var playback
+    @Environment(\.carMetrics) private var m
+    let playlist: YTPlaylist
+    @State private var page: YTPage?
+    private var videos: [YTVideo] { page?.flatItems.compactMap { if case .video(let v) = $0 { return v } else { return nil } } ?? [] }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.s3) {
+                HStack(spacing: Theme.s2) {
+                    CarPillButton(title: "Play all", symbol: "play.fill") { play(shuffle: false) }
+                    CarPillButton(title: "Shuffle", symbol: "shuffle") { play(shuffle: true) }
+                    Spacer()
+                    Text(playlist.isMix ? "Mix" : (playlist.videoCountText ?? "")).font(.system(size: m.compact ? 12 : 14)).foregroundStyle(Theme.inkMuted)
+                }
+                .disabled(videos.isEmpty)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
+                    ForEach(videos) { v in CarYTCard(video: v, queue: videos) }
+                }
+                if page == nil { ProgressView().frame(maxWidth: .infinity).padding() }
+            }
+            .padding(.horizontal, m.gutter).padding(.vertical, Theme.s3)
+        }
+        .task(id: playlist.id) { page = try? await env.youtube.fetch(.playlist(playlist.id)) }
+    }
+
+    private func play(shuffle: Bool) {
+        let list = shuffle ? videos.shuffled() : videos
+        guard let first = list.first else { return }
+        list.forEach { env.youtube.remember($0) }
+        Task {
+            guard let r = try? await env.youtube.resolve(first) else { return }
+            playback.play(r.item, queue: [r.item] + list.dropFirst().compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
+            if shuffle { playback.shuffle = true }
         }
     }
 }

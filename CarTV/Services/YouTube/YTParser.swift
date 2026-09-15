@@ -153,8 +153,9 @@ nonisolated enum YTParser {
 
         let contentType = t["contentType"].string ?? ""
         if let vid = watch["videoId"].string {
-            // Mixes / radio come as a watch endpoint with an RD… playlist: show them as a playlist card.
-            if let pid = watch["playlistId"].string, pid.hasPrefix("RD") || contentType.contains("PLAYLIST") {
+            // Mixes / radio come as a PLAYLIST tile whose endpoint is a watch with an RD… playlist.
+            // (A VIDEO tile that merely carries an RD playlist is a song — keep it a video.)
+            if let pid = watch["playlistId"].string, contentType.contains("PLAYLIST") {
                 return .playlist(YTPlaylist(id: pid, title: title.nilIfEmpty ?? String(localized: "Mix"), channelName: lines.first?.first,
                                             thumbnailURL: thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg"),
                                             videoCountText: pid.hasPrefix("RD") ? String(localized: "Mix") : flat.first { $0.localizedCaseInsensitiveContains("video") },
@@ -163,6 +164,7 @@ nonisolated enum YTParser {
             var v = YTVideo(id: vid, title: title)
             v.thumbnailURL = thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg")
             v.channelName = lines.first?.first
+            v.mixPlaylistID = watch["playlistId"].string
             v.viewsText = flat.first { $0.localizedCaseInsensitiveContains("view") }
             v.publishedText = flat.first { $0.localizedCaseInsensitiveContains("ago") || $0.localizedCaseInsensitiveContains("Streamed") }
             for o in header["thumbnailOverlays"].array {
