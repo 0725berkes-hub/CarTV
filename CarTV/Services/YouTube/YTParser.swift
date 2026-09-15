@@ -123,9 +123,16 @@ nonisolated enum YTParser {
         // Skip ads.
         if !raw.findAll("adBadgeViewModel").isEmpty { return nil }
         let meta = t["metadata"]["tileMetadataRenderer"]
-        let title = meta["title"].text ?? ""
         let header = t["header"]["tileHeaderRenderer"]
+        // Title/thumb live in a few places depending on tile style; try them all.
+        let title = meta["title"].text
+            ?? header["title"].text
+            ?? t.find("title").text
+            ?? ""
         let thumb = bestThumb(header["thumbnail"]["thumbnails"])
+            ?? bestThumb(header.find("thumbnails"))
+            ?? bestThumb(t["contentImage"].find("thumbnails"))
+            ?? t.find("sources").array.last?["url"].string.flatMap(URL.init)
         let lines = meta["lines"].array.map { line in
             line["lineRenderer"]["items"].array.compactMap { $0["lineItemRenderer"]["text"].text }.filter { $0 != "•" }
         }
@@ -156,7 +163,16 @@ nonisolated enum YTParser {
                 return .channel(YTChannel(id: bid, name: title, avatarURL: thumb, subscribersText: flat.first))
             }
             let pid = bid.hasPrefix("VL") ? String(bid.dropFirst(2)) : bid
-            return .playlist(YTPlaylist(id: pid, title: title, channelName: lines.first?.first, thumbnailURL: thumb, videoCountText: flat.first { $0.localizedCaseInsensitiveContains("video") }))
+            // Count often sits in a thumbnail overlay ("12 videos") rather than the lines.
+            let overlayCount = header["thumbnailOverlays"].array.compactMap { $0.find("text").text }.first { $0.localizedCaseInsensitiveContains("video") }
+            // Playlists without a thumbnail: derive from the first video if the tile carries one.
+            let fallbackThumb = thumb ?? (watch["videoId"].string ?? t.find("videoId").string).map { URL(string: "https://i.ytimg.com/vi/\($0)/hqdefault.jpg")! }
+            return .playlist(YTPlaylist(id: pid, title: title.nilIfEmpty ?? String(localized: "Playlist"), channelName: lines.first?.first,
+                                        thumbnailURL: fallbackThumb, videoCountText: overlayCount ?? flat.first { $0.localizedCaseInsensitiveContains("video") }))
+        }
+        // Playlist tiles sometimes only carry a playlistId inside a watch/playlist endpoint.
+        if let pid = select.find("playlistId").string, watch["videoId"].string == nil {
+            return .playlist(YTPlaylist(id: pid, title: title.nilIfEmpty ?? String(localized: "Playlist"), channelName: lines.first?.first, thumbnailURL: thumb, videoCountText: flat.first { $0.localizedCaseInsensitiveContains("video") }))
         }
         return nil
     }

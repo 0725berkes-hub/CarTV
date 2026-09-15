@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PhoneTab: Hashable { case home, favorites, youtube, cast, library, settings }
+enum PhoneTab: Hashable { case home, favorites, youtube, cast, library }
 
 struct PhoneRootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -12,8 +12,12 @@ struct PhoneRootView: View {
     @State private var showOnboarding = false
     @State private var importBanner: ImportBanner?
     @State private var playerShown = false
+    @State private var showSettings = false
 
     var body: some View {
+        // Five tabs: Home, Favorites, YouTube, Cast, Library. iOS shows a "More" tab
+        // past five, so Settings is a sheet from the toolbar instead — it's a place
+        // you visit, not a place you live.
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house.fill", value: .home) {
                 HomeView(showAddSource: $showAddSource)
@@ -30,12 +34,15 @@ struct PhoneRootView: View {
             Tab("Library", systemImage: "square.stack.fill", value: .library) {
                 LibraryView(showAddSource: $showAddSource)
             }
-            Tab("Settings", systemImage: "gearshape.fill", value: .settings) {
-                SettingsView()
-            }
         }
+        .environment(\.openSettings, OpenSettingsAction { showSettings = true })
         .tabViewBottomAccessory(isEnabled: playback.isActive) {
             MiniPlayerBar()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         // iOS 26 shrinks the tab bar into a compact glass pill when a list scrolls
         // under it — reads as a stuck half-sheet on a TV app. Keep it full-size.
@@ -111,5 +118,26 @@ struct BannerView: View {
         .glassEffect(.regular, in: Capsule())
         .padding(.top, Theme.s2)
         .padding(.horizontal, Theme.s4)
+    }
+}
+
+// MARK: - Settings presentation
+
+/// Any tab's toolbar can open Settings as a sheet without knowing about the root.
+struct OpenSettingsAction {
+    let run: () -> Void
+    func callAsFunction() { run() }
+}
+private struct OpenSettingsKey: EnvironmentKey { static let defaultValue = OpenSettingsAction { } }
+extension EnvironmentValues {
+    var openSettings: OpenSettingsAction { get { self[OpenSettingsKey.self] } set { self[OpenSettingsKey.self] = newValue } }
+}
+
+/// The gear that lives at the top-leading of every tab.
+struct SettingsToolbarButton: View {
+    @Environment(\.openSettings) private var openSettings
+    var body: some View {
+        Button { openSettings() } label: { Image(systemName: "gearshape") }
+            .accessibilityLabel("Settings")
     }
 }

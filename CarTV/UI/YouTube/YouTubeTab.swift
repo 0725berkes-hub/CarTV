@@ -41,6 +41,7 @@ struct YouTubeTab: View {
             .navigationTitle("YouTube")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSignIn = true } label: {
                         if let url = env.youtube.auth.accountAvatarURL {
@@ -277,7 +278,11 @@ struct YTPlaylistCard: View {
         NavigationLink(value: playlist) {
             VStack(alignment: .leading, spacing: Theme.s2) {
                 ZStack(alignment: .bottomTrailing) {
-                    Color.clear.overlay { RemoteImage(url: playlist.thumbnailURL, targetSize: CGSize(width: 640, height: 360), contentMode: .fill) { Theme.raised } }.clipped()
+                    Color.clear.overlay {
+                        RemoteImage(url: playlist.thumbnailURL, targetSize: CGSize(width: 640, height: 360), contentMode: .fill) {
+                            ZStack { TileTint.gradient(for: playlist.title); Image(systemName: "play.square.stack").font(.system(size: 34, weight: .light)).foregroundStyle(.white.opacity(0.7)) }
+                        }
+                    }.clipped()
                     HStack(spacing: 4) { Image(systemName: "list.bullet"); Text(playlist.videoCountText ?? "") }
                         .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 3)
                         .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 4)).padding(6)

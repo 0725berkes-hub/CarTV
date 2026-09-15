@@ -31,6 +31,7 @@ struct CastView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
             .navigationTitle("Cast")
+            .toolbar { ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() } }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: false) { result in
                 if case .success(let urls) = result, let url = urls.first { castFile(url) }
             }

@@ -37,6 +37,7 @@ struct HomeView: View {
             .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() }
                 if playback.carIsConnected {
                     ToolbarItem(placement: .topBarLeading) {
                         Image(systemName: "car.fill").foregroundStyle(Theme.accent).accessibilityLabel("Car connected")

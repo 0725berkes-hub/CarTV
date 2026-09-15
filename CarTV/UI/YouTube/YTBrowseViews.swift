@@ -149,7 +149,7 @@ struct YTPlaylistView: View {
             .padding(.vertical, Theme.s2).padding(.bottom, Theme.s10)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .navigationTitle(playlist.title)
+        .navigationTitle(page?.shelves.first?.title ?? playlist.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { page = try? await env.youtube.fetch(.playlist(playlist.id)) }
         .overlay { if page == nil { YTSkeletonFeed() } }

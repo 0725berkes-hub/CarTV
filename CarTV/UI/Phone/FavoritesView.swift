@@ -17,6 +17,7 @@ struct FavoritesView: View {
             }
             .background(Theme.ground.ignoresSafeArea())
             .navigationTitle("Favorites")
+            .toolbar { ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() } }
             .navigationBarTitleDisplayMode(.inline)
         }
     }
