@@ -134,6 +134,24 @@ final class PlaybackController {
         let kind: PlayerEngineKind = (item.streamKind.prefersAVPlayer && !settings.softwareDecoding) ? .avPlayer : .vlc
         Task { @MainActor [weak self] in
             guard let self, self.current?.id == item.id else { return }
+            var item = item
+            var kind = kind
+            // YouTube favourites/stubs carry the watch-page URL; resolve to a real stream first.
+            if item.ref.kind == .youtube, item.url.host?.contains("youtube.com") == true || item.url.host?.contains("youtu.be") == true {
+                guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
+                do {
+                    var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
+                    let resolved = try await AppEnvironment.shared.youtube.resolve(v)
+                    guard self.current?.id == item.id else { return }
+                    item = resolved.item
+                    self.current = item
+                    if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = item }
+                    kind = .avPlayer
+                } catch {
+                    self.snapshot = PlayerSnapshot(state: .failed(.unknown(error.localizedDescription)))
+                    return
+                }
+            }
             self.start(on: kind, item: item, startAt: startAt)
             AudioSessionController.activate()
             self.startProgressTimer()
@@ -184,6 +202,15 @@ final class PlaybackController {
     }
 
     private var origin: PlaybackOrigin { isPhonePlayerPresented ? .phone : .car }
+
+    /// Replace the up-next queue without interrupting the current item.
+    func setQueue(_ items: [PlayableItem]) {
+        guard let cur = current else { queue = items; return }
+        var q = items
+        if !q.contains(where: { $0.id == cur.id }) { q.insert(cur, at: 0) }
+        queue = q
+        shuffleTrail.removeAll()
+    }
 
     /// Next item honouring shuffle/repeat; nil when the queue is exhausted.
     private func upcoming(auto: Bool) -> PlayableItem? {

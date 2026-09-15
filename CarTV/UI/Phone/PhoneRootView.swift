@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PhoneTab: Hashable { case home, favorites, cast, library, settings }
+enum PhoneTab: Hashable { case home, favorites, youtube, cast, library, settings }
 
 struct PhoneRootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -20,6 +20,9 @@ struct PhoneRootView: View {
             }
             Tab("Favorites", systemImage: "heart.fill", value: .favorites) {
                 FavoritesView()
+            }
+            Tab("YouTube", systemImage: "play.rectangle.fill", value: .youtube) {
+                YouTubeTab()
             }
             Tab("Cast", systemImage: "tv.badge.wifi", value: .cast) {
                 CastView()

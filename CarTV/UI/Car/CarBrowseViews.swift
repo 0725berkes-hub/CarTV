@@ -375,6 +375,8 @@ struct CarTileButton: View {
                     PosterTile(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
                 case .localVideo:
                     VideoThumbCell(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
+                case .youtube:
+                    ChannelTile(item: item, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id, progress: progress, compact: m.compact)
                 }
             }
             // Portrait shapes (posters, video thumbs) share one narrower width so

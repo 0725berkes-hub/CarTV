@@ -87,6 +87,8 @@ struct ItemCell: View {
             PosterTile(item: item, progress: progress, isFavorite: fav, isPlaying: playing)
         case .localVideo:
             VideoThumbCell(item: item, progress: progress, isFavorite: fav, isPlaying: playing)
+        case .youtube:
+            VideoCard(item: item, progress: progress, isFavorite: fav)
         }
     }
 }

@@ -2,12 +2,12 @@ import SwiftUI
 
 enum CarSection: Hashable, CaseIterable, Identifiable {
     var id: Self { self }
-    case home, favorites, cast, library
+    case home, favorites, youtube, cast, library
     var title: LocalizedStringResource {
-        switch self { case .home: "Home"; case .favorites: "Favorites"; case .cast: "Cast"; case .library: "Library" }
+        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .cast: "Cast"; case .library: "Library" }
     }
     var symbol: String {
-        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
+        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
     }
 }
 
@@ -75,6 +75,7 @@ struct CarRootView: View {
                         switch section {
                         case .home:      CarNavHost(path: path) { CarHomeView() }
                         case .favorites: CarNavHost(path: path) { CarFavoritesView() }
+                        case .youtube:   CarNavHost(path: path) { CarYouTubeView() }
                         case .cast:      CarNavHost(path: path) { CarCastView() }
                         case .library:   CarNavHost(path: path) { CarLibraryView() }
                         }
