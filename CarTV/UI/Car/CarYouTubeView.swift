@@ -150,3 +150,71 @@ struct CarYTCard: View {
         }
     }
 }
+
+
+/// Car watch page: big thumbnail + Play/Resume, title, channel, and Up next
+/// (YouTube's own recommendations for this video) as a grid.
+struct CarYTWatchView: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(PlaybackController.self) private var playback
+    @Environment(\.carMetrics) private var m
+    @Environment(\.carPush) private var push
+    let video: YTVideo
+    @State private var info: YTParser.WatchInfo?
+
+    private var isCurrent: Bool { playback.current?.ref.id == YouTubeService.uuid(for: video.id) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.s4) {
+                HStack(alignment: .top, spacing: Theme.s4) {
+                    Button { if isCurrent { playback.requestCarPlayer() } else { play() } } label: {
+                        ZStack {
+                            RemoteImage(url: video.thumbnailURL, targetSize: CGSize(width: 1280, height: 720), contentMode: .fill) { Theme.raised }
+                            Image(systemName: isCurrent ? "waveform" : "play.fill").font(.system(size: m.compact ? 28 : 40, weight: .bold)).foregroundStyle(.white)
+                                .padding(m.compact ? 14 : 20).background(.black.opacity(0.45), in: Circle())
+                        }
+                        .frame(width: m.compact ? 220 : 340).aspectRatio(16/9, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+                    }
+                    .buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
+
+                    VStack(alignment: .leading, spacing: Theme.s2) {
+                        Text(info?.title ?? video.title).font(Theme.Car.title(m.compact ? 16 : 22)).foregroundStyle(Theme.ink).lineLimit(3)
+                        Text([info?.channel?.name ?? video.channelName, info?.viewsText ?? video.viewsText, info?.publishedText ?? video.publishedText].compactMap { $0?.nilIfEmpty }.joined(separator: " · "))
+                            .font(.system(size: m.compact ? 12 : 15)).foregroundStyle(Theme.inkMuted).lineLimit(2)
+                        HStack(spacing: Theme.s2) {
+                            CarPillButton(title: isCurrent ? "Now playing" : "Play", symbol: isCurrent ? "waveform" : "play.fill") {
+                                if isCurrent { playback.requestCarPlayer() } else { play() }
+                            }
+                            let ref = PlayableRef(id: YouTubeService.uuid(for: video.id), kind: .youtube)
+                            CarPillButton(title: env.favorites.isFavorite(ref) ? "Favorited" : "Favorite", symbol: env.favorites.isFavorite(ref) ? "heart.fill" : "heart") { env.favorites.toggle(ref) }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if let related = info?.related, !related.isEmpty {
+                    Text("Up next").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
+                        ForEach(related) { v in CarYTCard(video: v, queue: related) }
+                    }
+                } else if info == nil {
+                    ProgressView().frame(maxWidth: .infinity).padding()
+                }
+            }
+            .padding(.horizontal, m.gutter).padding(.vertical, Theme.s3)
+        }
+        .task(id: video.id) { info = try? await env.youtube.watch(video.id) }
+    }
+
+    private func play() {
+        env.youtube.remember(video)
+        let rest = (info?.related ?? [])
+        rest.forEach { env.youtube.remember($0) }
+        Task {
+            guard let r = try? await env.youtube.resolve(video) else { return }
+            playback.play(r.item, queue: [r.item] + rest.compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
+        }
+    }
+}

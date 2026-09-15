@@ -222,6 +222,10 @@ final class PlaybackController {
         }
     }
 
+    /// Bumped by car UI that wants the full-screen car player shown (e.g. "Now playing" on a watch page).
+    var carPlayerRequest = 0
+    func requestCarPlayer() { carPlayerRequest &+= 1 }
+
     /// Supplied by AppEnvironment so tiles don't need to fetch siblings on tap.
     var siblingsProvider: ((PlayableItem) -> [PlayableItem])?
 

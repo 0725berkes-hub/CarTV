@@ -11,6 +11,9 @@ final class YouTubeService {
     /// Set by onboarding when the user opted into YouTube sign-in; the YouTube tab
     /// presents the account sheet once it appears and clears this.
     var pendingSignInPrompt = false
+    /// Set when the full-screen player closes on a YouTube video: the YouTube tab
+    /// should land on that video's detail page, not wherever it was.
+    var pendingWatchPage: YTVideo?
     private let api = InnerTubeClient.shared
 
     // Resolved stream cache: videoID → (playable URL, expiry)

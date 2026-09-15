@@ -21,6 +21,7 @@ enum CarRoute: Hashable {
     case seriesCategory(String)
     case seriesDetail(VODSeries)      // seasons + episodes
     case favorites
+    case ytVideo(YTVideo)             // YouTube watch page (title, channel, up next)
 
     var title: String {
         switch self {
@@ -33,6 +34,7 @@ enum CarRoute: Hashable {
         case .seriesCategory(let c): c
         case .seriesDetail(let s): s.title
         case .favorites: String(localized: "Favorites")
+        case .ytVideo(let v): v.title
         }
     }
 }
@@ -93,7 +95,16 @@ struct CarRootView: View {
                         .transition(.opacity)
                         .zIndex(2)
                 } else if showPlayer {
-                    CarPlayerView { withAnimation(.snappy(duration: 0.3)) { showPlayer = false } }
+                    CarPlayerView {
+                        if let item = playback.current, item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
+                            var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
+                            section = .youtube
+                            var p = paths[.youtube] ?? []
+                            if case .ytVideo(let cur)? = p.last, cur.id == vid { /* already there */ } else { p.append(.ytVideo(v)) }
+                            paths[.youtube] = p
+                        }
+                        withAnimation(.snappy(duration: 0.3)) { showPlayer = false }
+                    }
                         .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
                                                 removal: .scale(scale: 0.96).combined(with: .opacity)))
                         .zIndex(1)
@@ -109,6 +120,9 @@ struct CarRootView: View {
         }
         .onChange(of: playback.isActive) { _, active in
             if active, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+        }
+        .onChange(of: playback.carPlayerRequest) { _, _ in
+            if playback.isActive { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
         .onAppear { if playback.isActive { showPlayer = true } }
         .task {
@@ -155,6 +169,7 @@ struct CarNavHost<Root: View>: View {
                     case .seriesCategory(let c): CarSeriesGridView(category: c)
                     case .seriesDetail(let s): CarSeriesDetailView(series: s)
                     case .favorites:           CarFavoritesView()
+                    case .ytVideo(let v):      CarYTWatchView(video: v)
                     }
                 }
                 .id(route)

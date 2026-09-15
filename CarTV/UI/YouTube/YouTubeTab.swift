@@ -8,6 +8,7 @@ struct YouTubeTab: View {
     @State private var query = ""
     @State private var submitted: String?
     @State private var feedReload = 0
+    @State private var currentWatchID: String?
     @State private var showSignIn = false
     @State private var path = NavigationPath()
 
@@ -72,6 +73,11 @@ struct YouTubeTab: View {
                 }
             }
             .navigationDestination(for: YTVideo.self) { YTWatchView(video: $0) }
+            .onChange(of: env.youtube.pendingWatchPage?.id, initial: true) { _, _ in
+                guard let v = env.youtube.pendingWatchPage else { return }
+                env.youtube.pendingWatchPage = nil
+                if currentWatchID != v.id { path.append(v); currentWatchID = v.id }
+            }
             .navigationDestination(for: YTChannel.self) { YTChannelView(channel: $0) }
             .navigationDestination(for: YTPlaylist.self) { YTPlaylistView(playlist: $0) }
         }

@@ -81,6 +81,9 @@ struct PhoneRootView: View {
                 if env.youtube.pendingSignInPrompt { tab = .youtube }
             }
         }
+        .onChange(of: env.youtube.pendingWatchPage?.id) { _, id in
+            if id != nil { tab = .youtube }
+        }
         .onChange(of: settings.hasCompletedOnboarding, initial: true) { _, done in
             // Fires on launch and whenever Settings resets the flag (tour again / clear all).
             // Small delay so a dismissing Settings sheet finishes before the cover appears.
