@@ -5,8 +5,8 @@ import OSLog
 /// AVPlayer streams natively (fMP4 with EXT-X-BYTERANGE). Each variant is one
 /// long "segment" list built from the format's SIDX index so seeking is exact.
 ///
-/// Output lives in the caches dir and is served via `file://` — AVPlayer accepts
-/// local playlists whose segments point at remote https URLs.
+/// Output lives in the caches dir and is served over loopback HTTP by
+/// `LocalPlaylistServer` (AVPlayer stalls on file:// playlists with https segments).
 nonisolated enum HLSBuilder {
 
     struct Result: Sendable {
@@ -62,9 +62,10 @@ nonisolated enum HLSBuilder {
         #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="\(audio.language ?? "Audio")",DEFAULT=YES,AUTOSELECT=YES,URI="\(audioName)"
         \(variantLines.joined(separator: "\n"))
         """
-        let masterURL = dir.appending(path: "master.m3u8")
-        try master.write(to: masterURL, atomically: true, encoding: .utf8)
-        Log.player.info("HLS built for \(resp.videoID, privacy: .public): \(variants.count) variants")
+        try master.write(to: dir.appending(path: "master.m3u8"), atomically: true, encoding: .utf8)
+        let base = try await LocalPlaylistServer.shared.start()
+        let masterURL = base.appending(path: resp.videoID).appending(path: "master.m3u8")
+        Log.player.info("HLS built for \(resp.videoID, privacy: .public): \(variants.count) variants → \(masterURL.absoluteString, privacy: .public)")
         return Result(masterURL: masterURL, variants: variants)
     }
 
