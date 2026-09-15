@@ -158,6 +158,16 @@ final class TikTokService {
         switch feed { case .forYou: forYou = []; case .following: following = []; case .saved: saved = []; case .liked: liked = [] }
         error = nil
         loading.insert(feed)
+        // The player's queue is the old list; drop it so the pager restarts on the new batch.
+        let pb = AppEnvironment.shared.playback
+        if activeFeedForPlayer == feed, pb.current?.ref.kind == .tiktok { pb.stop(); activeFeedForPlayer = nil }
+        waitTimers[feed]?.cancel()
+        waitTimers[feed] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, !Task.isCancelled, self.loading.contains(feed) else { return }
+            self.loading.remove(feed)
+            if self.items(for: feed).isEmpty { self.error = String(localized: "TikTok didn't respond. Try again in a moment.") }
+        }
         engine.load(engineTarget(feed))   // fresh page → fresh batch
     }
 

@@ -77,7 +77,7 @@ struct TTFeedView: View {
             } else {
                 // UIKit vertical paging scroll view: page size == its own bounds, which we
                 // pin to the full screen. No rotation tricks, no safe-area drift.
-                VerticalPager(count: items.count, index: idx, onRefresh: { Task { await tt.refresh(feed) } }) { i in
+                VerticalPager(count: items.count, index: idx, onRefresh: { refreshFeed(tt) }) { i in
                     TTPage(video: items[i], isCurrent: i == idx.wrappedValue, size: geo.size, muted: $muted,
                            onCreator: { showCreator = items[i].author })
                         // UIHostingController pages don't inherit the SwiftUI environment.
@@ -154,10 +154,22 @@ struct TTFeedView: View {
                 }
                 Spacer()
             }
+            .overlay(alignment: .leading) {
+                // Refresh: a fresh batch for this feed, back to the top.
+                Button { refreshFeed(tt) } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        .rotationEffect(.degrees(refreshSpin))
+                        .frame(width: 44, height: 44).contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(tt.loading.contains(feed) && tt.items(for: feed).isEmpty)
+                .padding(.leading, Theme.s2)
+            }
             .overlay(alignment: .trailing) {
                 Menu {
                     if case .signedIn(let h) = tt.session.state, let h { Text("@\(h)") }
-                    Button { Task { await tt.refresh(feed) } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    Button { refreshFeed(tt) } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                     Toggle(isOn: $muted) { Label("Mute", systemImage: muted ? "speaker.slash" : "speaker.wave.2") }
                     Divider()
                     Button(role: .destructive) { tt.signOut(); playback.stop() } label: { Label("Sign out of TikTok", systemImage: "rectangle.portrait.and.arrow.right") }
@@ -185,6 +197,14 @@ struct TTFeedView: View {
         .ignoresSafeArea()
     }
     @Namespace private var segNS
+    @State private var refreshSpin: Double = 0
+
+    private func refreshFeed(_ tt: TikTokService) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.6)) { refreshSpin += 360 }
+        indices[feed] = 0
+        Task { await tt.refresh(feed) }
+    }
 }
 
 // MARK: - One page
