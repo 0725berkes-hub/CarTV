@@ -26,9 +26,16 @@ nonisolated enum YTParser {
         let loose = collectItems(json).filter { seenIDs.insert($0.id).inserted }
         if !loose.isEmpty { shelves.insert(YTShelf(title: nil, items: loose), at: 0) }
 
-        continuation = json.findAll("continuationCommand").compactMap { $0["token"].string }.first
-            ?? json.findAll("nextContinuationData").compactMap { $0["continuation"].string }.first
-            ?? json.findAll("continuationEndpoint").compactMap { $0["continuationCommand"]["token"].string }.first
+        // Page-level continuation: the section list's own token (TV) or the feed's
+        // continuationItemRenderer (WEB). Shelf tokens are NOT page tokens — taking the
+        // first nextContinuationData in the tree used to pick a shelf's, so the page
+        // "ended" as soon as that shelf ran dry.
+        let sectionList = json.find("sectionListRenderer").exists ? json.find("sectionListRenderer") : json.find("sectionListContinuation")
+        let shelfTokens = Set(shelves.compactMap(\.continuation))
+        continuation = sectionList["continuations"].array.first?["nextContinuationData"]["continuation"].string
+            ?? json.findAll("continuationItemRenderer").compactMap { $0.find("continuationCommand")["token"].string }.first
+            ?? json.findAll("continuationCommand").compactMap { $0["token"].string }.first { !shelfTokens.contains($0) }
+            ?? json.findAll("nextContinuationData").compactMap { $0["continuation"].string }.first { !shelfTokens.contains($0) }
         return YTPage(shelves: shelves, continuation: continuation)
     }
 

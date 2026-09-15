@@ -73,7 +73,7 @@ struct CarYouTubeView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
                             ForEach(videos) { v in CarYTCard(video: v, queue: videos) }
                             // Pull the next page of every shelf that still has one.
-                            if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil {
+                            if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil || (feed == .home && refills < 6) {
                                 ProgressView().frame(maxWidth: .infinity, minHeight: 80).task { await loadMore() }
                             }
                         }
@@ -87,7 +87,7 @@ struct CarYouTubeView: View {
             }
         }
         .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)-\(reload)") {
-            page = nil; error = nil
+            page = nil; error = nil; refills = 0
             do {
                 let p = try await env.youtube.fetch(feed)
                 if p.flatItems.isEmpty { error = String(localized: "Nothing here yet. Sign in on your iPhone for your feed.") } else { page = p }
@@ -123,9 +123,18 @@ struct CarYouTubeView: View {
                 grew = grew || !shelves.isEmpty
             } else { p.continuation = nil }
         }
+        if !grew, feed == .home, refills < 6 {
+            // Everything exhausted → fresh Home batch, unseen only (YouTube's feed is endless).
+            refills += 1
+            if let more = try? await env.youtube.moreHome(excluding: seen), !more.flatItems.isEmpty {
+                p.shelves.append(contentsOf: more.shelves)
+                grew = true
+            }
+        }
         if !grew { p.continuation = nil; for i in p.shelves.indices { p.shelves[i].continuation = nil } }
         page = p
     }
+    @State private var refills = 0
 }
 
 struct CarYTCard: View {

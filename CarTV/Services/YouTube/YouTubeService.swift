@@ -157,6 +157,15 @@ final class YouTubeService {
         return p
     }
 
+    /// Home never ends on YouTube: when the page and all its shelves are exhausted,
+    /// ask for a fresh Home (recommendations differ each call) and keep the unseen ones.
+    func moreHome(excluding seen: Set<String>) async throws -> YTPage {
+        pageCache["\(Feed.home)"] = nil
+        var p = try await fetch(.home)
+        p.shelves = p.shelves.map { sh in var s = sh; s.items = s.items.filter { !seen.contains($0.id) }; return s }.filter { !$0.items.isEmpty }
+        return p
+    }
+
     /// Drop cached pages so the next fetch hits the network (Refresh button).
     func invalidateFeeds() { pageCache.removeAll() }
 

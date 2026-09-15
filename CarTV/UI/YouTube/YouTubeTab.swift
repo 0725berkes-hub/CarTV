@@ -94,6 +94,8 @@ struct YTFeedView: View {
     @State private var error: String?
     @State private var loadingMore = false
 
+    @State private var refills = 0
+    private var isHome: Bool { if case .home = feed { return true } else { return false } }
     private var verticalFeed: Bool {
         switch feed { case .history, .watchLater, .liked, .subscriptions, .playlist: true; default: false }
     }
@@ -155,7 +157,7 @@ struct YTFeedView: View {
                                 }
                             }
                         }
-                        if page.continuation != nil || page.shelves.contains(where: { $0.continuation != nil }) {
+                        if page.continuation != nil || page.shelves.contains(where: { $0.continuation != nil }) || (isHome && refills < 6) {
                             ProgressView().frame(maxWidth: .infinity, minHeight: 64).task { await loadMore() }
                         }
                     }
@@ -178,7 +180,7 @@ struct YTFeedView: View {
 
     private func load(force: Bool) async {
         if page != nil, !force { return }
-        loading = true; error = nil
+        loading = true; error = nil; refills = 0
         do {
             let p = try await env.youtube.fetch(feed)
             Log.network.info("YT feed \(String(describing: feed), privacy: .public): \(p.flatItems.count) items, \(p.shelves.count) shelves")
@@ -224,7 +226,17 @@ struct YTFeedView: View {
                 }
             }
         }
-        guard let cont = page?.continuation else { return }
+        guard let cont = page?.continuation else {
+            if !grew, case .home = feed, refills < 6, let seen = page?.flatItems.map(\.id) {
+                refills += 1
+                if let more = try? await env.youtube.moreHome(excluding: Set(seen)), !more.flatItems.isEmpty {
+                    let loose = more.flatItems.filter { if case .video = $0 { return true } else { return true } }
+                    if let i = page?.shelves.lastIndex(where: { $0.title == nil }) { page?.shelves[i].items.append(contentsOf: loose) }
+                    else { page?.shelves.append(YTShelf(title: nil, items: loose)) }
+                }
+            }
+            return
+        }
         if let more = try? await env.youtube.fetch(feed, continuation: cont) {
             // Grow the existing grid instead of appending new shelves: appending a
             // sibling grid re-lays out the whole stack and throws the scroll position.
