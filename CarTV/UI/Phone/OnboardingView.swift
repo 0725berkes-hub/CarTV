@@ -146,24 +146,20 @@ struct OnboardingView: View {
 
 // MARK: - Artwork
 
-/// App icon-style tile with a car glyph, springs in on first appear.
+/// The CarTV mascot (same art as the launch screen), springs in on first appear.
 private struct HeroArtwork: View {
     let tint: Color
     let appeared: Bool
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 48, style: .continuous)
-                .fill(LinearGradient(colors: [tint, tint.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 196, height: 196)
-                .shadow(color: tint.opacity(0.5), radius: 46, y: 22)
-            Image(systemName: "car.side.front.open")
-                .font(.system(size: 84, weight: .medium))
-                .foregroundStyle(.black.opacity(0.85))
-                .symbolRenderingMode(.hierarchical)
-        }
-        .scaleEffect(appeared ? 1 : 0.6)
-        .opacity(appeared ? 1 : 0)
-        .rotationEffect(.degrees(appeared ? 0 : -8))
+        Image("LaunchLogo")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .frame(width: 220, height: 220)
+            .shadow(color: tint.opacity(0.45), radius: 40, y: 18)
+            .scaleEffect(appeared ? 1 : 0.6)
+            .opacity(appeared ? 1 : 0)
+            .rotationEffect(.degrees(appeared ? 0 : -8))
     }
 }
 
