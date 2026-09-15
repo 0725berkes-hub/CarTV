@@ -15,7 +15,6 @@ nonisolated final class InnerTubeClient: Sendable {
         let version: String
         let userAgent: String
         let clientId: Int
-        var extra: [String: Any] = [:]
         var sendableExtra: [String: String] = [:]
     }
 
@@ -187,7 +186,8 @@ enum YTError: LocalizedError, Sendable {
 
 /// Dictionary-walking helper so parsers read like the response shape:
 /// `json["contents"]["twoColumnBrowseResultsRenderer"]["tabs"].array`
-nonisolated struct JSONObject: Sendable {
+nonisolated struct JSONObject: @unchecked Sendable {
+    /// Foundation JSON tree (NSDictionary/NSArray/NSString/NSNumber). Never mutated after parse.
     let raw: Any?
     init(_ raw: Any?) { self.raw = raw }
 
