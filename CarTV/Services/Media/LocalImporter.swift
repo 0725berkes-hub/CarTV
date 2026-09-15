@@ -90,12 +90,13 @@ nonisolated final class LocalImporter: Sendable {
         // only things each child task captures are immutable values.
         var imported = 0
         let jobs = staged
+        let folder = targetFolder   // let-bound: a captured `var` is what the sending check rejects
         await withTaskGroup(of: Bool.self) { group in
             var next = 0
             var done = 0
             while next < min(3, jobs.count) {
                 let j = jobs[next]; next += 1
-                group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: targetFolder) }
+                group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: folder) }
             }
             for await ok in group {
                 done += 1
@@ -103,7 +104,7 @@ nonisolated final class LocalImporter: Sendable {
                 await progress(.importing(done: files.count - jobs.count + done, total: files.count, name: String(localized: "Preparing…")))
                 if next < jobs.count {
                     let j = jobs[next]; next += 1
-                    group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: targetFolder) }
+                    group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: folder) }
                 }
             }
         }
