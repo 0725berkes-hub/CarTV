@@ -155,8 +155,6 @@ struct CastView: View {
             }
         }
     }
-
-    }
 }
 
 /// Wraps `RPSystemBroadcastPickerView`, styled as a full-width glass button.
