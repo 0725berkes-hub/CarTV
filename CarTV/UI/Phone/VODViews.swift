@@ -7,6 +7,26 @@ nonisolated enum VODRoute: Hashable {
     case movie(VODMovie)
     case series(VODSeries)
     case grid(title: String, movies: [VODMovie], series: [VODSeries])
+
+    // A grid can carry thousands of items; identify it by title + counts so the
+    // navigation path doesn't hash the whole array on every push.
+    static func == (a: VODRoute, b: VODRoute) -> Bool {
+        switch (a, b) {
+        case (.hub, .hub): true
+        case (.movie(let x), .movie(let y)): x.id == y.id
+        case (.series(let x), .series(let y)): x.id == y.id
+        case (.grid(let t1, let m1, let s1), .grid(let t2, let m2, let s2)): t1 == t2 && m1.count == m2.count && s1.count == s2.count
+        default: false
+        }
+    }
+    func hash(into h: inout Hasher) {
+        switch self {
+        case .hub: h.combine(0)
+        case .movie(let m): h.combine(1); h.combine(m.id)
+        case .series(let s): h.combine(2); h.combine(s.id)
+        case .grid(let t, let m, let s): h.combine(3); h.combine(t); h.combine(m.count); h.combine(s.count)
+        }
+    }
 }
 
 // MARK: - Hub (Movies / Series segmented, shelves by category)
@@ -39,19 +59,19 @@ struct VODHubView: View {
                     default:
                         if mode == .movies {
                             ForEach(vod.movieShelves, id: \.name) { shelf in
-                                Shelf(title: shelf.name, count: shelf.items.count) {
+                                Shelf(title: shelf.name, count: shelf.items.count, seeAll: .grid(title: shelf.name, movies: shelf.items, series: [])) {
                                     ForEach(shelf.items.prefix(30)) { m in
-                                        NavigationLink(value: m) { MoviePoster(movie: m) }.buttonStyle(.plain)
+                                        NavigationLink(value: VODRoute.movie(m)) { MoviePoster(movie: m) }.buttonStyle(.plain)
                                     }
-                                } seeAll: { VODGridView(title: shelf.name, movies: shelf.items) }
+                                }
                             }
                         } else {
                             ForEach(vod.seriesShelves, id: \.name) { shelf in
-                                Shelf(title: shelf.name, count: shelf.items.count) {
+                                Shelf(title: shelf.name, count: shelf.items.count, seeAll: .grid(title: shelf.name, movies: [], series: shelf.items)) {
                                     ForEach(shelf.items.prefix(30)) { s in
-                                        NavigationLink(value: s) { SeriesPoster(series: s) }.buttonStyle(.plain)
+                                        NavigationLink(value: VODRoute.series(s)) { SeriesPoster(series: s) }.buttonStyle(.plain)
                                     }
-                                } seeAll: { VODGridView(title: shelf.name, series: shelf.items) }
+                                }
                             }
                         }
                     }
@@ -77,11 +97,11 @@ struct VODHubView: View {
         } else {
             if !r.movies.isEmpty {
                 Text("Movies").eyebrow().padding(.horizontal, Theme.s4)
-                PosterGrid { ForEach(r.movies) { m in NavigationLink(value: m) { MoviePoster(movie: m) }.buttonStyle(.plain) } }
+                PosterGrid { ForEach(r.movies) { m in NavigationLink(value: VODRoute.movie(m)) { MoviePoster(movie: m) }.buttonStyle(.plain) } }
             }
             if !r.series.isEmpty {
                 Text("Series").eyebrow().padding(.horizontal, Theme.s4)
-                PosterGrid { ForEach(r.series) { s in NavigationLink(value: s) { SeriesPoster(series: s) }.buttonStyle(.plain) } }
+                PosterGrid { ForEach(r.series) { s in NavigationLink(value: VODRoute.series(s)) { SeriesPoster(series: s) }.buttonStyle(.plain) } }
             }
         }
     }
@@ -102,18 +122,18 @@ struct VODHubView: View {
 }
 
 /// Horizontal shelf with header + "See all".
-private struct Shelf<Content: View, SeeAll: View>: View {
+private struct Shelf<Content: View>: View {
     let title: String
     let count: Int
+    let seeAll: VODRoute
     @ViewBuilder let content: () -> Content
-    @ViewBuilder let seeAll: () -> SeeAll
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.s2) {
                 Text(title).font(Theme.Font.title2).foregroundStyle(Theme.ink).lineLimit(1)
                 Text("\(count)").font(Theme.Font.caption).monospacedDigit().foregroundStyle(Theme.inkFaint)
                 Spacer()
-                NavigationLink { seeAll() } label: {
+                NavigationLink(value: seeAll) {
                     HStack(spacing: 2) { Text("See all"); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)) }
                         .font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
                 }
@@ -143,8 +163,8 @@ struct VODGridView: View {
     var body: some View {
         ScrollView {
             PosterGrid {
-                ForEach(movies) { m in NavigationLink(value: m) { MoviePoster(movie: m) }.buttonStyle(.plain) }
-                ForEach(series) { s in NavigationLink(value: s) { SeriesPoster(series: s) }.buttonStyle(.plain) }
+                ForEach(movies) { m in NavigationLink(value: VODRoute.movie(m)) { MoviePoster(movie: m) }.buttonStyle(.plain) }
+                ForEach(series) { s in NavigationLink(value: VODRoute.series(s)) { SeriesPoster(series: s) }.buttonStyle(.plain) }
             }
             .padding(.vertical, Theme.s3)
         }

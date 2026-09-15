@@ -182,9 +182,14 @@ struct CarHeader: View {
                         ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
                             let selected = section == s
                             Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
-                                Label(s.title, systemImage: s.symbol)
-                                    .labelStyle(selected || !m.compact ? .titleAndIcon : .iconOnly)
-                                    .font(.system(size: m.compact ? 13 : 15, weight: .semibold))
+                                Group {
+                                    if selected || !m.compact {
+                                        Label(s.title, systemImage: s.symbol)
+                                    } else {
+                                        Image(systemName: s.symbol).accessibilityLabel(Text(s.title))
+                                    }
+                                }
+                                .font(.system(size: m.compact ? 13 : 15, weight: .semibold))
                                     .padding(.horizontal, m.compact ? 2 : 6)
                                     .frame(height: m.headerHeight - 12)
                             }
