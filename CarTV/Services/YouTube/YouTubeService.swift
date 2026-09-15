@@ -165,7 +165,14 @@ final class YouTubeService {
         let url: URL
         var variants: [(Int, String)] = []
         if let hls = resp.hlsManifestURL {
-            url = hls
+            // Native HLS: mirror the master locally so the quality picker gets the
+            // real ladder and a manual pick can swap to a single-variant master.
+            if let mirrored = try? await HLSBuilder.mirrorNativeMaster(hls, videoID: video.id) {
+                url = mirrored.masterURL
+                variants = mirrored.variants.map { ($0.height, $0.label) }
+            } else {
+                url = hls
+            }
         } else if !resp.avVideoFormats.isEmpty, resp.bestDefaultAudio != nil {
             var built: HLSBuilder.Result
             do {

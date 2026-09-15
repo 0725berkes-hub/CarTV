@@ -59,6 +59,10 @@ final class AppSettings {
     var mytvEnabled: Bool {
         didSet { defaults.set(mytvEnabled, forKey: Keys.mytv) }
     }
+    /// TikTok tab (personal For You via your own tiktok.com session).
+    var tiktokEnabled: Bool {
+        didSet { defaults.set(tiktokEnabled, forKey: Keys.tiktok) }
+    }
     /// Folder YouTube downloads land in. nil = ask (or the only folder, if there is one).
     var downloadFolderID: UUID? {
         didSet { defaults.set(downloadFolderID?.uuidString, forKey: Keys.downloadFolder) }
@@ -106,6 +110,7 @@ final class AppSettings {
         static let language = "settings.language"
         static let subtitleLanguage = "settings.subtitleLanguage"
         static let mytv = "settings.mytvEnabled"
+        static let tiktok = "settings.tiktokEnabled"
         static let downloadFolder = "settings.downloadFolderID"
         static let rapidAPIKey = "settings.rapidAPIKey"
     }

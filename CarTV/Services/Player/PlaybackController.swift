@@ -164,7 +164,9 @@ final class PlaybackController {
 
     // MARK: Commands
 
-    func play(_ item: PlayableItem, queue: [PlayableItem]? = nil, origin: PlaybackOrigin, resume: Bool = true) {
+    /// `presentPlayer: false` plays inline (the TikTok pager hosts the video itself)
+    /// instead of pushing the full-screen phone player.
+    func play(_ item: PlayableItem, queue: [PlayableItem]? = nil, origin: PlaybackOrigin, resume: Bool = true, presentPlayer: Bool = true) {
         // 1. Instant UI: set current + present the player synchronously, nothing slow yet.
         if let queue { self.queue = queue } else if !self.queue.contains(where: { $0.id == item.id }) { self.queue = [item] }
         current = item
@@ -178,7 +180,7 @@ final class PlaybackController {
         sessionNeedsReload = false
         qualityVariants = []
         snapshot = PlayerSnapshot(state: .loading)
-        if origin == .phone { isPhonePlayerPresented = true }
+        if origin == .phone, presentPlayer { isPhonePlayerPresented = true }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         // 2. Next turn: engine + I/O, after the presentation has been committed.

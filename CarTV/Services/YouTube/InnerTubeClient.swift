@@ -36,6 +36,12 @@ nonisolated final class InnerTubeClient: Sendable {
     /// `n`/`sig` challenges solved (YTChallengeSolver) and an embed context.
     static let webEmbedded = ClientProfile(name: "WEB_EMBEDDED_PLAYER", version: "2.20260708.00.00",
         userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36", clientId: 56)
+    /// Apple Vision Pro client: returns a native HLS manifest (full 144p–4K ladder,
+    /// AAC audio, WebVTT subs) with no PO token and no URL challenges, as long as
+    /// the request carries a visitor id. yt-dlp's current top-priority client.
+    static let visionOS = ClientProfile(name: "VISIONOS", version: "1.02",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15", clientId: 101,
+        sendableExtra: ["deviceMake": "Apple", "deviceModel": "RealityDevice17,1", "osName": "visionOS", "osVersion": "26.5.23O471"])
     static let tv = ClientProfile(name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", version: "2.0",
         userAgent: "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15", clientId: 85)
 
@@ -101,9 +107,32 @@ nonisolated final class InnerTubeClient: Sendable {
     /// the URL challenges are solved), then iOS → ANDROID → TV as fallbacks.
     func player(videoID: String, accessToken: String? = nil) async throws -> YTPlayerResponse {
         var lastError: Error = YTError.unavailable("No client succeeded")
+
+        // 0. visionOS → native HLS. Fastest and most robust: AVPlayer streams it
+        //    directly, seeks anywhere, picks quality from the real ladder.
+        do {
+            let vd = try await visitorData()
+            let body: [String: Any] = [
+                "videoId": videoID, "contentCheckOk": true, "racyCheckOk": true,
+                "playbackContext": ["contentPlaybackContext": ["html5Preference": "HTML5_PREF_WANTS", "signatureTimestamp": 20702]],
+            ]
+            let json = try await call("player", client: Self.visionOS, body: body, accessToken: nil, visitorData: vd)
+            let resp = try YTPlayerResponse(json: json)
+            if resp.isPlayable, resp.hlsManifestURL != nil {
+                Log.network.info("YT player OK via VISIONOS (HLS) for \(videoID, privacy: .public)")
+                return resp
+            }
+            if resp.playabilityStatus == "LOGIN_REQUIRED" { cachedVisitorData = nil }   // visitor got flagged; mint a new one next time
+            lastError = YTError.unavailable(resp.playabilityReason ?? "Not playable")
+            Log.network.notice("YT visionOS not playable: \(resp.playabilityReason ?? "-", privacy: .public)")
+        } catch {
+            lastError = error
+            Log.network.error("YT visionOS failed: \(error.localizedDescription, privacy: .public)")
+        }
+
         let sts = (try? await YTChallengeSolver.shared.player().signatureTimestamp) ?? 20140
 
-        // 1. Embedded web player — the only PO-token-free client with full streams.
+        // 1. Embedded web player — PO-token-free adaptive streams (needs URL challenges solved).
         do {
             let resp = try await embeddedPlayer(videoID: videoID, sts: sts)
             if resp.isPlayable, !resp.formats.isEmpty || resp.hlsManifestURL != nil {
@@ -138,6 +167,17 @@ nonisolated final class InnerTubeClient: Sendable {
             }
         }
         throw lastError
+    }
+
+    /// A visitor id is what separates "Sign in to confirm you're not a bot" from a
+    /// playable response for the visionOS client. Cheap to mint; cached for the session.
+    private var cachedVisitorData: (value: String, at: Date)?
+    private func visitorData() async throws -> String {
+        if let c = cachedVisitorData, Date().timeIntervalSince(c.at) < 6 * 3600 { return c.value }
+        let json = try await call("visitor_id", client: Self.web, body: [:])
+        guard let vd = json["responseContext"]["visitorData"].string else { throw YTError.parse("no visitorData") }
+        cachedVisitorData = (vd, .now)
+        return vd
     }
 
     /// Mirrors what the embed page's own player sends: its full client context,

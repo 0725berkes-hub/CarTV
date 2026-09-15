@@ -76,6 +76,70 @@ nonisolated enum HLSBuilder {
         return Result(masterURL: masterURL, variants: variants)
     }
 
+    // MARK: Native master mirroring
+
+    /// Downloads YouTube's own HLS master, keeps the AVC/AAC variants (one per height,
+    /// highest bitrate wins), and writes `master.m3u8` (full ladder) plus
+    /// `master-<height>.m3u8` (single variant) next to each other. Media playlists
+    /// and segments stay on Google's servers — only the tiny master is local.
+    static func mirrorNativeMaster(_ remote: URL, videoID: String) async throws -> Result {
+        let (data, resp) = try await URLSession.shared.data(from: remote)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw YTError.network("HLS master HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)") }
+        let text = String(decoding: data, as: UTF8.self)
+        let lines = text.components(separatedBy: "\n")
+
+        var header: [String] = []          // EXTM3U, version, independent-segments, EXT-X-MEDIA…
+        var streams: [(height: Int, bandwidth: Int, codecs: String, inf: String, uri: String)] = []
+        var i = 0
+        while i < lines.count {
+            let l = lines[i]
+            if l.hasPrefix("#EXT-X-STREAM-INF") {
+                let uri = i + 1 < lines.count ? lines[i + 1] : ""
+                let attrs = l
+                func attr(_ k: String) -> String? {
+                    guard let r = attrs.range(of: k + "=") else { return nil }
+                    var rest = attrs[r.upperBound...]
+                    if rest.hasPrefix("\"") { rest = rest.dropFirst(); return String(rest.prefix { $0 != "\"" }) }
+                    return String(rest.prefix { $0 != "," })
+                }
+                let res = attr("RESOLUTION") ?? "0x0"
+                let h = Int(res.split(separator: "x").last ?? "") ?? 0
+                let bw = Int(attr("BANDWIDTH") ?? "") ?? 0
+                let codecs = attr("CODECS") ?? ""
+                if codecs.contains("avc1") || codecs.contains("hvc1") || codecs.contains("hev1") || codecs.contains("dvh1") {
+                    // Skip VP9/AV1 — AVFoundation can't do them in HLS reliably on all devices.
+                    streams.append((h, bw, codecs, l, uri))
+                }
+                i += 2; continue
+            }
+            if l.hasPrefix("#") || l.isEmpty { header.append(l) }
+            i += 1
+        }
+        guard !streams.isEmpty else { throw YTError.unavailable("No AVC variants in HLS master") }
+
+        // One variant per height (highest bitrate), ascending.
+        var byHeight: [Int: (height: Int, bandwidth: Int, codecs: String, inf: String, uri: String)] = [:]
+        for st in streams { if let cur = byHeight[st.height] { if st.bandwidth > cur.bandwidth { byHeight[st.height] = st } } else { byHeight[st.height] = st } }
+        let ladder = byHeight.values.sorted { $0.height < $1.height }
+
+        let dir = root.appending(path: videoID, directoryHint: .isDirectory)
+        try? FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let head = header.filter { !$0.isEmpty }.joined(separator: "\n")
+        func write(_ name: String, _ variants: [(height: Int, bandwidth: Int, codecs: String, inf: String, uri: String)]) throws {
+            let body = variants.map { "\($0.inf)\n\($0.uri)" }.joined(separator: "\n")
+            try (head + "\n" + body + "\n").write(to: dir.appending(path: name), atomically: true, encoding: .utf8)
+        }
+        try write("master.m3u8", ladder)
+        for v in ladder { try write("master-\(v.height).m3u8", [v]) }
+
+        let base = try await LocalPlaylistServer.shared.start()
+        let masterURL = base.appending(path: videoID).appending(path: "master.m3u8")
+        let variants = ladder.map { ($0.height, $0.height >= 2160 ? "4K" : "\($0.height)p") }
+        Log.player.info("HLS mirrored for \(videoID, privacy: .public): \(variants.map(\.1).joined(separator: ","), privacy: .public)")
+        return Result(masterURL: masterURL, variants: variants)
+    }
+
     // MARK: Segments from SIDX
 
     struct Segment: Sendable { let offset: Int64; let length: Int64; let duration: Double }
@@ -90,7 +154,9 @@ nonisolated enum HLSBuilder {
         req.setValue("bytes=\(idx.lowerBound)-\(idx.upperBound)", forHTTPHeaderField: "Range")
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            Log.network.error("YT SIDX itag \(f.itag) HTTP \(http.statusCode) n=\(YTChallengeSolver.nParam(of: f.url) ?? "-", privacy: .public)")
+            let u = f.url.absoluteString
+            let keys = u.split(separator: "?").last?.split(separator: "&").map { String($0.split(separator: "=").first ?? "") }.joined(separator: ",") ?? ""
+            Log.network.error("YT SIDX itag \(f.itag) HTTP \(http.statusCode) n=\(YTChallengeSolver.nParam(of: f.url) ?? "-", privacy: .public) marker=\(u.contains("__cipher_s")) sig=\(u.contains("&sig=") || u.contains("&signature=")) params=[\(keys, privacy: .public)]")
             throw YTError.network("HTTP \(http.statusCode)")
         }
         let parsed = SIDX.parse(data)

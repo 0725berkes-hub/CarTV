@@ -24,6 +24,7 @@ final class AppEnvironment {
     #endif
     let mirror: MirrorReceiver
     let youtube: YouTubeService
+    let tiktok: TikTokService
     let downloads = YTDownloadManager()
     let vod: VODService
 
@@ -63,6 +64,7 @@ final class AppEnvironment {
         #endif
         mirror    = MirrorReceiver()
         youtube   = YouTubeService()
+        tiktok    = TikTokService()
         playback.siblingsProvider = { [library] item in library.siblings(of: item) }
     }
 

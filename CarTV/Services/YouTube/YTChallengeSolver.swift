@@ -215,7 +215,12 @@ actor YTChallengeSolver {
     }
 
     nonisolated static func appending(url: URL, param: String, value: String) -> URL {
-        let encoded = value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
+        // Encode only what a query value must (same set YouTube's own player uses);
+        // over-encoding `-`/`_` in a signature is harmless to curl but not to iOS's
+        // stricter URL parsing.
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
         let sep = url.absoluteString.contains("?") ? "&" : "?"
         return URL(string: url.absoluteString + sep + param + "=" + encoded) ?? url
     }

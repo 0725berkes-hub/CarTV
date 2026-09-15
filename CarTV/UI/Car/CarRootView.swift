@@ -2,12 +2,12 @@ import SwiftUI
 
 enum CarSection: Hashable, CaseIterable, Identifiable {
     var id: Self { self }
-    case home, favorites, youtube, cast, library
+    case home, favorites, youtube, tiktok, cast, library
     var title: LocalizedStringResource {
-        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .cast: "Cast"; case .library: "Library" }
+        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .tiktok: "TikTok"; case .cast: "Cast"; case .library: "Library" }
     }
     var symbol: String {
-        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
+        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .tiktok: "music.note"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
     }
 }
 
@@ -78,6 +78,7 @@ struct CarRootView: View {
                         case .home:      CarNavHost(path: path) { CarHomeView() }
                         case .favorites: CarNavHost(path: path) { CarFavoritesView() }
                         case .youtube:   CarNavHost(path: path) { CarYouTubeView() }
+                        case .tiktok:    CarNavHost(path: path) { CarTikTokView() }
                         case .cast:      CarNavHost(path: path) { CarCastView() }
                         case .library:   CarNavHost(path: path) { CarLibraryView() }
                         }
@@ -181,6 +182,7 @@ extension EnvironmentValues {
 
 struct CarHeader: View {
     @Environment(PlaybackController.self) private var playback
+    @Environment(AppSettings.self) private var settings
     @Environment(\.carMetrics) private var m
     @Binding var section: CarSection
     let route: CarRoute?
@@ -225,7 +227,7 @@ struct CarHeader: View {
 
     private var segments: some View {
         HStack(spacing: 0) {
-            ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
+            ForEach(CarSection.allCases.filter { $0 != .tiktok || settings.tiktokEnabled }, id: \.self) { (s: CarSection) in
                 let selected = section == s
                 Button {
                     withAnimation(.snappy(duration: 0.28, extraBounce: 0.08)) { section = s }

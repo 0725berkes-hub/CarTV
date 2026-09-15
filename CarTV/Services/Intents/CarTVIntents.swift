@@ -293,6 +293,8 @@ enum PlayableResolver {
             return PlayableEntity(id: "vod:\(item.id.uuidString)", title: item.title, subtitle: item.subtitle)
         case .youtube:
             return PlayableEntity(id: "youtube:\(item.id.uuidString)", title: item.title, subtitle: item.subtitle)
+        case .tiktok:
+            return PlayableEntity(id: "tiktok:\(item.id.uuidString)", title: item.title, subtitle: item.subtitle)
         }
     }
 
@@ -308,6 +310,7 @@ enum PlayableResolver {
         case "series":  return env.vod.series(id: parts[1]).map { PlayableEntity(id: id, title: $0.title, subtitle: String(localized: "Series")) }
         case "vod":     return UUID(uuidString: parts[1]).flatMap { env.library.item(for: PlayableRef(id: $0, kind: .vod)) }.map { PlayableEntity(id: id, title: $0.title, subtitle: $0.subtitle) }
         case "youtube": return UUID(uuidString: parts[1]).flatMap { env.library.item(for: PlayableRef(id: $0, kind: .youtube)) }.map { PlayableEntity(id: id, title: $0.title, subtitle: $0.subtitle) }
+        case "tiktok":  return UUID(uuidString: parts[1]).flatMap { env.library.item(for: PlayableRef(id: $0, kind: .tiktok)) }.map { PlayableEntity(id: id, title: $0.title, subtitle: $0.subtitle) }
         default: return nil
         }
     }
@@ -382,6 +385,9 @@ enum PlayableResolver {
         case "youtube":
             guard let uuid = UUID(uuidString: parts[1]), let item = env.library.item(for: PlayableRef(id: uuid, kind: .youtube)) else { return false }
             env.playback.play(item, origin: origin, resume: true)
+        case "tiktok":
+            guard let uuid = UUID(uuidString: parts[1]), let item = env.library.item(for: PlayableRef(id: uuid, kind: .tiktok)) else { return false }
+            env.playback.play(item, origin: origin, resume: false)
         default: return false
         }
         return true

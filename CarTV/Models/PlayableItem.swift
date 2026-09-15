@@ -99,6 +99,22 @@ nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
 
 extension PlayableItem {
     /// A cast item: no library record, plays straight from the URL.
+    /// A TikTok from the feed. Direct MP4 with the cookie/referer headers the CDN requires.
+    init(tiktok v: TTVideo, url: URL, headers: [String: String]) {
+        self.init(
+            ref: PlayableRef(id: v.playableID, kind: .tiktok),
+            title: v.desc.nilIfEmpty ?? "@\(v.author.uniqueID)",
+            subtitle: "@\(v.author.uniqueID)" + (v.music.map { " · \($0.title)" } ?? ""),
+            url: url,
+            artworkURL: v.coverURL,
+            headers: headers,
+            genre: nil,
+            isLive: false,
+            duration: TimeInterval(v.duration),
+            streamKind: .mp4
+        )
+    }
+
     init(castURL url: URL, title: String, artwork: URL?) {
         self.init(
             ref: PlayableRef(id: UUID(), kind: .channel),

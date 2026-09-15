@@ -54,8 +54,19 @@ struct SettingsView: View {
                     .onChange(of: settings.mytvEnabled) { _, on in
                         if on { MyTVService.install(env: env) } else { MyTVService.uninstall(env: env) }
                     }
+                    Toggle(isOn: $settings.tiktokEnabled) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("TikTok tab")
+                                Text(tiktokStatus).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                            }
+                        } icon: { Image(systemName: "music.note").foregroundStyle(Theme.accent) }
+                    }
+                    if env.tiktok.session.isSignedIn {
+                        Button(role: .destructive) { env.tiktok.signOut() } label: { Label("Sign out of TikTok", systemImage: "rectangle.portrait.and.arrow.right") }
+                    }
                 } header: { Text("Built-in sources") } footer: {
-                    Text("Adds 360+ live Kurdish, Arabic and international channels as a playlist. Turn off to remove them.")
+                    Text("MyTV+ adds 360+ live Kurdish, Arabic and international channels. TikTok shows your own For You page using your tiktok.com login — read-only, nothing is posted or liked.")
                 }
 
                 Section {
@@ -126,6 +137,12 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { Text("CarTV will look like it was just installed.") }
         }
+    }
+
+    private var tiktokStatus: String {
+        guard settings.tiktokEnabled else { return String(localized: "Off") }
+        if case .signedIn(let h) = env.tiktok.session.state { return h.map { "@\($0)" } ?? String(localized: "Signed in") }
+        return String(localized: "Not signed in")
     }
 
     private var mytvStatus: String {

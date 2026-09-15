@@ -117,6 +117,7 @@ nonisolated struct YTPlayerResponse: Sendable {
     let dashManifestURL: URL?
     var formats: [YTFormat]        // adaptive + progressive
     let isPlayable: Bool
+    let playabilityStatus: String?
     let playabilityReason: String?
     let expiresAt: Date
     let captionTracks: [(name: String, lang: String, url: URL)]
@@ -138,6 +139,7 @@ nonisolated struct YTPlayerResponse: Sendable {
 
         let status = json["playabilityStatus"]
         isPlayable = status["status"].string == "OK"
+        playabilityStatus = status["status"].string
         playabilityReason = status["reason"].string ?? status["errorScreen"].find("reason").text
 
         let sd = json["streamingData"]

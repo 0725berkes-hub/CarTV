@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PhoneTab: Hashable { case home, favorites, youtube, library }
+enum PhoneTab: Hashable { case home, favorites, youtube, tiktok, library }
 
 struct PhoneRootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -26,6 +26,11 @@ struct PhoneRootView: View {
             }
             Tab("YouTube", systemImage: "play.rectangle.fill", value: .youtube) {
                 YouTubeTab()
+            }
+            if settings.tiktokEnabled {
+                Tab("TikTok", systemImage: "music.note", value: .tiktok) {
+                    TTFeedView()
+                }
             }
             Tab("Library", systemImage: "square.stack.fill", value: .library) {
                 LibraryView(showAddSource: $showAddSource)

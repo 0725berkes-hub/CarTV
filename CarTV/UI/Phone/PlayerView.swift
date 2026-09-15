@@ -187,6 +187,7 @@ struct PlayerView: View {
                             QualityMenuItems()
                         } label: {
                             Text(playback.qualityLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                                .lineLimit(1).fixedSize()
                                 .padding(.horizontal, 10).frame(height: 44)
                         }
                         .glassEffect(.regular.interactive(), in: Capsule())

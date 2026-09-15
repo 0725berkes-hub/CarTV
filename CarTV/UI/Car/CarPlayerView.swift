@@ -25,6 +25,13 @@ struct CarPlayerView: View {
             Color.black.ignoresSafeArea()
 
             if car.supportsVideoPlayback {
+                // Vertical video (TikTok) on a wide car screen: fill the pillars with the
+                // blurred cover so it reads as one frame instead of a strip on black.
+                if playback.current?.ref.kind == .tiktok, let art = playback.current?.artworkURL {
+                    RemoteImage(url: art, targetSize: CGSize(width: 360, height: 640), contentMode: .fill) { Color.black }
+                        .blur(radius: 40).opacity(0.55).ignoresSafeArea()
+                        .overlay(Color.black.opacity(0.25).ignoresSafeArea())
+                }
                 VideoSurface().id(playback.videoViewRevision).ignoresSafeArea()
                 if playback.subtitles.isExternalActive {
                     SubtitleOverlay().padding(.bottom, controlsVisible ? (m.compact ? 56 : 84) : 24)

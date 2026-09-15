@@ -228,6 +228,8 @@ final class LibraryStore {
         case .youtube:
             guard let vid = YouTubeService.videoID(from: ref.id) else { return nil }
             return AppEnvironment.shared.youtube.cachedStub(vid)
+        case .tiktok:
+            return AppEnvironment.shared.tiktok.cached(playableID: ref.id)
         }
     }
 
@@ -244,6 +246,8 @@ final class LibraryStore {
             return [item]   // the VOD views pass an explicit episode queue
         case .youtube:
             return [item]   // YouTube views pass related/playlist queues explicitly
+        case .tiktok:
+            return [item]   // the feed pager passes its own queue
         }
     }
 
