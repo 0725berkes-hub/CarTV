@@ -1,0 +1,80 @@
+import Foundation
+import SwiftUI
+
+/// User preferences persisted in UserDefaults. Observable so views update live.
+@Observable
+final class AppSettings {
+    private let defaults = UserDefaults.standard
+
+    enum Appearance: String, CaseIterable, Identifiable {
+        case system, dark, light
+        var id: String { rawValue }
+        var title: LocalizedStringResource {
+            switch self {
+            case .system: "Follow System"
+            case .dark:   "Dark"
+            case .light:  "Light"
+            }
+        }
+        var colorScheme: ColorScheme? {
+            switch self {
+            case .system: nil
+            case .dark:   .dark
+            case .light:  .light
+            }
+        }
+    }
+
+    var appearance: Appearance {
+        didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
+    }
+    /// Force VLC software decoding (helps with broken hardware-decoded streams).
+    var softwareDecoding: Bool {
+        didSet { defaults.set(softwareDecoding, forKey: Keys.softwareDecoding) }
+    }
+    /// Show live snapshot previews in channel grids (uses data).
+    var livePreviews: Bool {
+        didSet { defaults.set(livePreviews, forKey: Keys.livePreviews) }
+    }
+    /// Probe channel reachability in the background.
+    var healthChecks: Bool {
+        didSet { defaults.set(healthChecks, forKey: Keys.healthChecks) }
+    }
+    var hasCompletedOnboarding: Bool {
+        didSet { defaults.set(hasCompletedOnboarding, forKey: Keys.onboarding) }
+    }
+    /// BCP-47 override, nil = follow system.
+    var languageOverride: String? {
+        didSet { defaults.set(languageOverride, forKey: Keys.language) }
+    }
+    /// Preferred subtitle language for auto-selection and translation target.
+    var subtitleLanguage: String? {
+        didSet { defaults.set(subtitleLanguage, forKey: Keys.subtitleLanguage) }
+    }
+    /// Built-in MyTV+ channels (367 live channels).
+    var mytvEnabled: Bool {
+        didSet { defaults.set(mytvEnabled, forKey: Keys.mytv) }
+    }
+
+    init() {
+        appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
+        softwareDecoding = defaults.bool(forKey: Keys.softwareDecoding)
+        livePreviews = defaults.object(forKey: Keys.livePreviews) as? Bool ?? true
+        healthChecks = defaults.object(forKey: Keys.healthChecks) as? Bool ?? true
+        hasCompletedOnboarding = defaults.bool(forKey: Keys.onboarding)
+        languageOverride = defaults.string(forKey: Keys.language)
+        subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
+        mytvEnabled = defaults.bool(forKey: Keys.mytv)
+    }
+
+    private enum Keys {
+        static let appearance = "settings.appearance"
+        static let softwareDecoding = "settings.softwareDecoding"
+        static let livePreviews = "settings.livePreviews"
+        static let healthChecks = "settings.healthChecks"
+        static let onboarding = "settings.onboardingDone"
+        static let language = "settings.language"
+        static let subtitleLanguage = "settings.subtitleLanguage"
+        static let mytv = "settings.mytvEnabled"
+    }
+}

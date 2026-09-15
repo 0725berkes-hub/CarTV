@@ -1,0 +1,9 @@
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.DS_Store
+build/
+
+# Large vendored binary (fetch with Scripts/fetch-vlckit.sh)
+Packages/VLCKit/Vendor/
