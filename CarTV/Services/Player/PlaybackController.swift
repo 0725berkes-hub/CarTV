@@ -182,6 +182,11 @@ final class PlaybackController {
         snapshot = PlayerSnapshot(state: .loading)
         if origin == .phone, presentPlayer { isPhonePlayerPresented = true }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Items that still need resolving (YouTube stubs) take a few seconds; the
+        // previous video must not keep playing under the new title meanwhile.
+        if item.ref.kind == .youtube, item.url.host?.contains("youtube.com") == true || item.url.host?.contains("youtu.be") == true {
+            engine.stop()
+        }
 
         // 2. Next turn: engine + I/O, after the presentation has been committed.
         let startAt = resume && !item.isLive ? progress.resumePosition(for: item.ref) : nil
