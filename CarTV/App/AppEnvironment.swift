@@ -18,6 +18,7 @@ final class AppEnvironment {
     let carPlay: CarPlayCoordinator
     let health: SourceHealthService
     let settings: AppSettings
+    let vod: VODService
 
     private(set) var didBootstrap = false
 
@@ -47,6 +48,7 @@ final class AppEnvironment {
         favorites = FavoritesStore(container: modelContainer)
         progress  = ProgressStore(container: modelContainer)
         health    = SourceHealthService(container: modelContainer)
+        vod       = VODService()
         playback  = PlaybackController(settings: settings, progress: progress)
         carPlay   = CarPlayCoordinator(playback: playback)
         playback.siblingsProvider = { [library] item in library.siblings(of: item) }

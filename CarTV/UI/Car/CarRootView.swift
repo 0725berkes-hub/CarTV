@@ -129,8 +129,8 @@ struct CarNowPlayingAccessory: View {
                         Monogram(text: item.title, size: 11)
                     }.padding(item.isLocal ? 0 : 4)
                 }
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -153,7 +153,7 @@ struct CarNowPlayingAccessory: View {
                 }
             }
             .buttonStyle(.plain)
-            .padding(.leading, 8).padding(.trailing, 4)
+            .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
             .contentShape(Rectangle())
             .onTapGesture(perform: open)
             .accessibilityAddTraits(.isButton)

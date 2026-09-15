@@ -18,6 +18,8 @@ final class SubtitleController {
     private(set) var isTranslating = false
     private(set) var translationTarget: Locale.Language?
     private(set) var loadError: String?
+    /// URL of the external track currently shown (for menus to mark the selection).
+    private(set) var activeURL: URL?
 
     private var originalCues: [SubtitleCue] = []
     private var lastIndex = 0
@@ -32,6 +34,7 @@ final class SubtitleController {
         isTranslating = false
         translationTarget = nil
         loadError = nil
+        activeURL = nil
         lastIndex = 0
         currentItem = item
         // Auto-detect sidecar .srt for local files.
@@ -41,15 +44,24 @@ final class SubtitleController {
             if FileManager.default.fileExists(atPath: srt.path) { loadExternal(srt) }
             else if FileManager.default.fileExists(atPath: vtt.path) { loadExternal(vtt) }
         }
+        // MyTV+ movies/episodes ship subtitle links; pick the user's language.
+        if let item, !item.subtitleLinks.isEmpty,
+           let url = item.subtitleLinks.preferred(for: AppEnvironment.shared.settings.subtitleLanguage) {
+            loadExternal(url, headers: item.headers)
+        }
     }
 
-    func loadExternal(_ url: URL) {
+    func loadExternal(_ url: URL, headers: [String: String] = [:]) {
         loadError = nil
         Task {
             do {
                 let data: Data
                 if url.isFileURL { data = try Data(contentsOf: url) }
-                else { (data, _) = try await URLSession.shared.data(from: url) }
+                else {
+                    var req = URLRequest(url: url)
+                    headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+                    (data, _) = try await URLSession.shared.data(for: req)
+                }
                 let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.windowsArabic.rawValue)))) ?? String(decoding: data, as: UTF8.self)
                 let parsed = SubtitleParser.parse(text)
                 await MainActor.run {
@@ -57,6 +69,7 @@ final class SubtitleController {
                     self.originalCues = parsed
                     self.cues = parsed
                     self.isExternalActive = true
+                    self.activeURL = url
                     self.lastIndex = 0
                 }
             } catch {
@@ -67,6 +80,7 @@ final class SubtitleController {
 
     func disableExternal() {
         isExternalActive = false
+        activeURL = nil
         currentText = nil
         translateTask?.cancel()
         isTranslating = false

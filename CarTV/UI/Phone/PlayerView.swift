@@ -28,6 +28,13 @@ struct PlayerView: View {
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
 
+                // External (MyTV+ movie/episode) subtitles only — channels never set these.
+                if playback.subtitles.isExternalActive {
+                    SubtitleOverlay()
+                        .padding(.bottom, controlsVisible ? 96 : 32)
+                        .animation(.easeOut(duration: 0.2), value: controlsVisible)
+                }
+
                 gestureLayer
 
                 stateOverlay
@@ -111,6 +118,8 @@ struct PlayerView: View {
             }
             .padding(Theme.s6).frame(maxWidth: 380)
             .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
+        case .ended:
+            UpNextCard(compact: true)
         default:
             EmptyView()
         }
@@ -145,6 +154,10 @@ struct PlayerView: View {
                         }
                     }
                     ControlButton(symbol: playback.gravity.symbol) { playback.cycleGravity(); scheduleHide() }
+                    if playback.current?.isLive == false {
+                        ControlButton(symbol: "shuffle", tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); scheduleHide() }
+                        ControlButton(symbol: playback.repeatMode.symbol, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); scheduleHide() }
+                    }
                     ControlButton(symbol: "ellipsis") { showTracks = true; hideTask?.cancel() }
                     if playback.carIsConnected {
                         Image(systemName: "car.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
@@ -211,28 +224,30 @@ struct PlayerView: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = scrubbing ? scrubValue : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let knob: CGFloat = scrubbing ? 28 : 20
-        let track: CGFloat = scrubbing ? 10 : 6
+        let track: CGFloat = scrubbing ? 14 : 7
+        let thumbW: CGFloat = scrubbing ? 22 : 14
         let font = Theme.Font.caption.monospacedDigit()
         return HStack(spacing: 12) {
-            Text(pos.clockString).font(font).foregroundStyle(.white.opacity(0.9))
+            Text(pos.clockString).font(font).foregroundStyle(.white.opacity(0.9)).frame(minWidth: 40, alignment: .trailing)
             GeometryReader { geo in
+                let w = geo.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.25)).frame(height: track)
-                    Capsule().fill(.white.opacity(0.35)).frame(width: geo.size.width * playback.snapshot.bufferedFraction, height: track)
-                    Capsule().fill(Theme.accent).frame(width: geo.size.width * fraction, height: track)
-                    Circle().fill(.white)
-                        .frame(width: knob, height: knob)
-                        .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
-                        .offset(x: geo.size.width * fraction - knob / 2)
+                    Capsule().fill(.white.opacity(0.25))
+                    Capsule().fill(.white.opacity(0.15)).frame(width: w * playback.snapshot.bufferedFraction)
+                    Capsule().fill(Theme.accent).frame(width: max(thumbW, w * fraction))
+                    Capsule().fill(.white)
+                        .frame(width: thumbW, height: track + 6)
+                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+                        .offset(x: min(max(0, w * fraction - thumbW / 2), w - thumbW))
                 }
+                .frame(height: track)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in
-                            if !scrubbing { scrubbing = true; hideTask?.cancel() }
-                            scrubValue = min(1, max(0, v.location.x / geo.size.width)) * dur
+                            if !scrubbing { scrubbing = true; hideTask?.cancel(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                            scrubValue = min(1, max(0, v.location.x / w)) * dur
                         }
                         .onEnded { _ in
                             playback.seek(to: scrubValue)
@@ -242,9 +257,9 @@ struct PlayerView: View {
                 )
             }
             .frame(height: 44)
-            Text("-" + (dur - pos).clockString).font(font).foregroundStyle(.white.opacity(0.6))
+            Text("-" + (dur - pos).clockString).font(font).foregroundStyle(.white.opacity(0.6)).frame(minWidth: 44, alignment: .leading)
         }
-        .animation(.easeOut(duration: 0.12), value: scrubbing)
+        .animation(.spring(duration: 0.22, bounce: 0.1), value: scrubbing)
     }
 
     // MARK: Actions
@@ -386,10 +401,20 @@ struct TracksSheet: View {
                     row(String(localized: "Off"), selected: playback.snapshot.selectedSubtitleTrack == nil && !playback.subtitles.isExternalActive) {
                         playback.selectSubtitleTrack(nil)
                     }
+                    // MyTV+ movies/episodes: pick a language; the choice is remembered for next time.
+                    if let item = playback.current, !item.subtitleLinks.isEmpty {
+                        ForEach(item.subtitleLinks.tracks, id: \.code) { t in
+                            row(t.label, selected: playback.subtitles.isExternalActive && playback.subtitles.activeURL == t.url) {
+                                settings.subtitleLanguage = t.code
+                                playback.selectSubtitleTrack(nil)
+                                playback.subtitles.loadExternal(t.url, headers: item.headers)
+                            }
+                        }
+                    }
                     ForEach(playback.snapshot.subtitleTracks) { t in
                         row(t.name, selected: playback.snapshot.selectedSubtitleTrack == t.id) { playback.selectSubtitleTrack(t.id) }
                     }
-                    if playback.subtitles.isExternalActive {
+                    if playback.subtitles.isExternalActive, playback.current?.subtitleLinks.isEmpty != false {
                         row(String(localized: "External file"), selected: true) {}
                     }
                     Button { showFile = true } label: { Label("Load subtitle file (.srt / .vtt)", systemImage: "doc.badge.plus") }

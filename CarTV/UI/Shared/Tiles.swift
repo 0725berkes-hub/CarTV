@@ -251,3 +251,49 @@ struct SkeletonTile: View {
         .onAppear { shimmer = true }
     }
 }
+
+
+// MARK: - End-of-video choices
+
+/// Shown when a video finishes and neither repeat nor shuffle is on.
+/// Big glass buttons so it's usable from the driver's seat.
+struct UpNextCard: View {
+    @Environment(PlaybackController.self) private var playback
+    var compact = false
+    var body: some View {
+        let size: CGFloat = compact ? 56 : 72
+        VStack(spacing: compact ? Theme.s3 : Theme.s5) {
+            Text("Finished").font(.system(size: compact ? 15 : 20, weight: .semibold, design: .rounded)).foregroundStyle(.white.opacity(0.85))
+            GlassEffectContainer(spacing: 16) {
+                HStack(spacing: 16) {
+                    UpNextButton(symbol: "arrow.counterclockwise", title: "Replay", size: size) { playback.replay() }
+                    if playback.queue.count > 1 {
+                        UpNextButton(symbol: "forward.end.fill", title: "Next", size: size, prominent: true) { playback.next() }
+                        UpNextButton(symbol: "shuffle", title: "Random", size: size) { playback.playRandom(origin: .car) }
+                    }
+                }
+            }
+        }
+        .padding(compact ? Theme.s4 : Theme.s6)
+    }
+}
+
+struct UpNextButton: View {
+    let symbol: String
+    let title: LocalizedStringResource
+    let size: CGFloat
+    var prominent = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.system(size: size * 0.36, weight: .bold))
+                    .foregroundStyle(prominent ? Color.black : .white)
+                    .frame(width: size, height: size)
+                    .glassEffect(prominent ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Circle())
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}

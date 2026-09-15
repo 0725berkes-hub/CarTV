@@ -25,6 +25,9 @@ struct CarPlayerView: View {
 
             if car.supportsVideoPlayback {
                 VideoSurface().id(playback.videoViewRevision).ignoresSafeArea()
+                if playback.subtitles.isExternalActive {
+                    SubtitleOverlay().padding(.bottom, controlsVisible ? (m.compact ? 56 : 84) : 24)
+                }
             } else {
                 AudioOnlyStage(item: playback.current)
             }
@@ -98,6 +101,10 @@ struct CarPlayerView: View {
                                 }
                             }
                             CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
+                            if playback.current?.isLive == false {
+                                CarCircleButton(symbol: "shuffle", size: small, tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); bump() }
+                                CarCircleButton(symbol: playback.repeatMode.symbol, size: small, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); bump() }
+                            }
                             if playback.current?.ref.kind == .channel {
                                 CarCircleButton(symbol: "list.bullet.rectangle.fill", size: small) {
                                     withAnimation(.spring(duration: 0.3)) { drawerOpen.toggle() }
@@ -176,6 +183,8 @@ struct CarPlayerView: View {
             }
             .padding(m.compact ? Theme.s4 : Theme.s6).frame(maxWidth: m.compact ? 320 : 500)
             .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
+        case .ended:
+            UpNextCard(compact: m.compact)
         default: EmptyView()
         }
     }
@@ -343,31 +352,33 @@ struct CarScrubber: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = dragging ? dragFraction * dur : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let track: CGFloat = dragging ? (m.compact ? 10 : 14) : (m.compact ? 6 : 8)
-        let knob: CGFloat = dragging ? (m.compact ? 30 : 36) : (m.compact ? 22 : 28)
+        // iOS media scrubber: thin track at rest, grows under the finger. The thumb is
+        // a glass pill riding the track so it's grabbable but doesn't read as a knob.
+        let track: CGFloat = dragging ? (m.compact ? 14 : 18) : (m.compact ? 7 : 9)
+        let thumbW: CGFloat = dragging ? (m.compact ? 22 : 28) : (m.compact ? 14 : 18)
         let font = Font.system(size: m.compact ? 12 : 15, weight: .semibold).monospacedDigit()
 
         HStack(spacing: m.compact ? 10 : 14) {
             Text(pos.clockString).font(font).foregroundStyle(.white).frame(minWidth: m.compact ? 34 : 44, alignment: .trailing)
             GeometryReader { geo in
-                let w = geo.size.width - knob
+                let w = geo.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.28)).frame(height: track).padding(.horizontal, knob / 2)
-                    Capsule().fill(.white.opacity(0.18)).frame(width: w * playback.snapshot.bufferedFraction, height: track).padding(.leading, knob / 2)
-                    Capsule().fill(Theme.accent).frame(width: w * fraction + knob / 2, height: track).padding(.leading, knob / 2)
-                    // Handle: a real, grabbable knob (like the system volume/scrubber thumb).
-                    Circle().fill(.white)
-                        .frame(width: knob, height: knob)
-                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
-                        .offset(x: w * fraction)
+                    Capsule().fill(.white.opacity(0.25))
+                    Capsule().fill(.white.opacity(0.15)).frame(width: w * playback.snapshot.bufferedFraction)
+                    Capsule().fill(Theme.accent).frame(width: max(thumbW, w * fraction))
+                    Capsule().fill(.white)
+                        .frame(width: thumbW, height: track + (dragging ? 8 : 6))
+                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+                        .offset(x: min(max(0, w * fraction - thumbW / 2), w - thumbW))
                 }
+                .frame(height: track)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in
-                            if !dragging { dragging = true; onScrubStart() }
-                            dragFraction = min(1, max(0, (v.location.x - knob / 2) / w))
+                            if !dragging { dragging = true; onScrubStart(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                            dragFraction = min(1, max(0, v.location.x / w))
                         }
                         .onEnded { _ in
                             playback.seek(to: dragFraction * dur)
@@ -380,13 +391,11 @@ struct CarScrubber: View {
             Text("-" + (dur - pos).clockString).font(font).foregroundStyle(.white.opacity(0.7)).frame(minWidth: m.compact ? 40 : 52, alignment: .leading)
         }
         .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
-        .glassEffect(.regular, in: Capsule())
+        .glassEffect(.regular.interactive(), in: Capsule())
         .animation(.spring(duration: 0.22, bounce: 0.1), value: dragging)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playback position")
         .accessibilityValue(pos.clockString)
-        .accessibilityAdjustableAction { dir in
-            playback.skip(by: dir == .increment ? 15 : -15)
-        }
+        .accessibilityAdjustableAction { dir in playback.skip(by: dir == .increment ? 15 : -15) }
     }
 }

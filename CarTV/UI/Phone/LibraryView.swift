@@ -26,6 +26,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             List {
+                if env.settings.mytvEnabled { mytvSection }
                 sourcesSection
                 localSection
             }
@@ -45,6 +46,7 @@ struct LibraryView: View {
                     } label: { Image(systemName: "plus") }
                 }
             }
+            .task(id: env.settings.mytvEnabled) { if env.settings.mytvEnabled { env.vod.loadIfNeeded() } }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
             .navigationDestination(for: VideoFolder.self) { FolderDetailView(folder: $0) }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: true) { result in
@@ -87,6 +89,31 @@ struct LibraryView: View {
     }
 
     // MARK: Sections
+
+    @ViewBuilder private var mytvSection: some View {
+        Section {
+            NavigationLink { VODHubView() } label: {
+                HStack(spacing: Theme.s3) {
+                    Image(systemName: "popcorn.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Movies & Series").font(Theme.Font.headline).foregroundStyle(Theme.ink)
+                        Text(vodSubtitle).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                    }
+                }
+            }
+        } header: {
+            Text("MyTV+").eyebrow()
+        }
+    }
+
+    private var vodSubtitle: String {
+        let v = env.vod
+        if v.movies.isEmpty {
+            if case .failed = v.phase { return String(localized: "Couldn't load — tap to retry") }
+            return String(localized: "Loading catalogue…")
+        }
+        return String(localized: "\(v.movies.count) movies · \(v.series.count) series")
+    }
 
     @ViewBuilder private var sourcesSection: some View {
         Section {

@@ -197,6 +197,11 @@ struct LocalVideosGridView: View {
         .searchable(text: $query, prompt: Text("Find a video"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button { playback.playRandom(from: items, origin: .phone) } label: { Image(systemName: "shuffle") }
+                    .disabled(items.isEmpty)
+                    .accessibilityLabel("Shuffle")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Sort", selection: $sort) { ForEach(Sort.allCases) { Text($0.title).tag($0) } }
                 } label: { Image(systemName: "arrow.up.arrow.down") }

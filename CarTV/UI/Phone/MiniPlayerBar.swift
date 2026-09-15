@@ -11,6 +11,7 @@ struct MiniPlayerBar: View {
         if let item = playback.current {
             HStack(spacing: 12) {
                 artwork(item)
+                    .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
@@ -32,7 +33,7 @@ struct MiniPlayerBar: View {
                         Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
                     }
                 }
-                .font(.title3)
+                .font(.title2)
                 .frame(width: 44, height: 44)
                 .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
 
@@ -45,8 +46,9 @@ struct MiniPlayerBar: View {
                 }
             }
             .buttonStyle(.plain)
-            .padding(.leading, 8)
-            .padding(.trailing, 4)
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .onTapGesture { playback.isPhonePlayerPresented = true }
             .accessibilityAddTraits(.isButton)
@@ -61,8 +63,7 @@ struct MiniPlayerBar: View {
             }
             .padding(item.isLocal ? 0 : 4)
         }
-        .frame(width: 40, height: 40)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func subtitle(_ item: PlayableItem) -> String? {

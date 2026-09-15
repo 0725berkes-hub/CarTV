@@ -140,7 +140,7 @@ struct CarVideosGridView: View {
     var body: some View {
         let _ = env.library.revision
         let videos = folder.id == VideoFolder.loose.id ? env.library.localVideos().filter { $0.folder == nil } : env.library.localVideos(in: folder)
-        CarGrid(items: videos.map(PlayableItem.init(video:)), wide: true)
+        CarGrid(items: videos.map(PlayableItem.init(video:)), wide: true, shuffleable: true)
     }
 }
 
@@ -182,8 +182,31 @@ struct CarGrid: View {
     @Environment(\.carMetrics) private var m
     let items: [PlayableItem]
     var wide = false
+    /// Show a big "Shuffle" row at the top (videos, not live channels).
+    var shuffleable = false
 
     private var showIndex: Bool { items.count > 24 }
+
+    @ViewBuilder private var shuffleRow: some View {
+        if shuffleable, items.count > 1 {
+            Button { playback.playRandom(from: items, origin: .car) } label: {
+                HStack(spacing: Theme.s3) {
+                    Image(systemName: "shuffle").font(.system(size: m.compact ? 18 : 22, weight: .bold))
+                    Text("Shuffle Play").font(.system(size: m.compact ? 15 : 18, weight: .semibold, design: .rounded))
+                    Spacer(minLength: 0)
+                    Text("\(items.count)").font(.system(size: m.compact ? 12 : 14, weight: .semibold)).monospacedDigit().foregroundStyle(.black.opacity(0.6))
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, Theme.s4)
+                .frame(height: m.compact ? 52 : Theme.Car.minTarget + 8)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(CarFocusButtonStyle())
+            .glassEffect(.regular.tint(Theme.accent).interactive(), in: Capsule())
+            .padding(.horizontal, m.gutter)
+            .padding(.bottom, Theme.s2)
+        }
+    }
 
     /// Items sorted by title, grouped by first letter (digits/symbols → "#").
     private var sections: [(key: String, items: [PlayableItem])] {
@@ -207,6 +230,7 @@ struct CarGrid: View {
         ScrollViewReader { proxy in
             HStack(spacing: 0) {
                 ScrollView {
+                    shuffleRow
                     if showIndex {
                         LazyVStack(alignment: .leading, spacing: Theme.s4, pinnedViews: .sectionHeaders) {
                             ForEach(sections, id: \.key) { section in
@@ -314,8 +338,10 @@ struct CarTileButton: View {
                 }
             }
             .if(fixedWidth) { $0.frame(width: item.isLocal ? m.tileWidth * 0.72 : m.tileWidth) }
+            .padding(6)
         }
         .buttonStyle(CarFocusButtonStyle())
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         .contextMenu {
             Button { env.favorites.toggle(item.ref) } label: {
                 Label(env.favorites.isFavorite(item) ? "Remove Favorite" : "Add to Favorites", systemImage: "heart")
@@ -344,7 +370,7 @@ struct CarSourceCard: View {
         .padding(.horizontal, Theme.s3).padding(.vertical, Theme.s2)
         .frame(minHeight: Theme.Car.minTarget)
         .contentShape(Rectangle())
-        .background(Theme.surface.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
     }
 }
 

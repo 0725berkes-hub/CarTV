@@ -16,6 +16,16 @@ final class PlaybackController {
 
     private(set) var current: PlayableItem?
     private(set) var queue: [PlayableItem] = []
+
+    enum RepeatMode: String, CaseIterable { case off, all, one
+        var symbol: String { switch self { case .off: "repeat"; case .all: "repeat"; case .one: "repeat.1" } }
+        var next: RepeatMode { switch self { case .off: .all; case .all: .one; case .one: .off } }
+        var title: LocalizedStringResource { switch self { case .off: "Repeat Off"; case .all: "Repeat All"; case .one: "Repeat One" } }
+    }
+    var shuffle = false { didSet { UserDefaults.standard.set(shuffle, forKey: "playback.shuffle") } }
+    var repeatMode: RepeatMode = .off { didSet { UserDefaults.standard.set(repeatMode.rawValue, forKey: "playback.repeat") } }
+    /// History of shuffled picks so "previous" walks back through what actually played.
+    private var shuffleTrail: [UUID] = []
     private(set) var snapshot = PlayerSnapshot()
     private(set) var engineKind: PlayerEngineKind = .avPlayer
     private(set) var gravity: VideoGravity = .fit
@@ -83,6 +93,8 @@ final class PlaybackController {
         self.progress = progress
         self.engine = avEngine
         bind(avEngine)
+        shuffle = UserDefaults.standard.bool(forKey: "playback.shuffle")
+        repeatMode = RepeatMode(rawValue: UserDefaults.standard.string(forKey: "playback.repeat") ?? "") ?? .off
     }
 
     func attachNowPlaying() {
@@ -156,24 +168,59 @@ final class PlaybackController {
         seek(to: target)
     }
 
+    private var origin: PlaybackOrigin { isPhonePlayerPresented ? .phone : .car }
+
+    /// Next item honouring shuffle/repeat; nil when the queue is exhausted.
+    private func upcoming(auto: Bool) -> PlayableItem? {
+        guard let cur = current else { return nil }
+        if auto, repeatMode == .one { return cur }
+        if shuffle {
+            let others = queue.filter { $0.id != cur.id }
+            guard !others.isEmpty else { return repeatMode == .all || !auto ? cur : nil }
+            return others.randomElement()
+        }
+        guard let i = queue.firstIndex(where: { $0.id == cur.id }) else { return nil }
+        if i + 1 < queue.count { return queue[i + 1] }
+        return (repeatMode == .all || !auto) && !queue.isEmpty ? queue.first : nil
+    }
+
     func next() {
-        guard let cur = current, let i = queue.firstIndex(where: { $0.id == cur.id }), i + 1 < queue.count else { return }
-        play(queue[i + 1], origin: isPhonePlayerPresented ? .phone : .car)
+        guard let cur = current, let item = upcoming(auto: false) else { return }
+        if shuffle { shuffleTrail.append(cur.id) }
+        play(item, origin: origin, resume: false)
     }
 
     func previous() {
-        guard let cur = current, let i = queue.firstIndex(where: { $0.id == cur.id }), i > 0 else { return }
-        play(queue[i - 1], origin: isPhonePlayerPresented ? .phone : .car)
+        // Within the first 3s: go back; otherwise restart the current item (system convention).
+        if snapshot.isSeekable, snapshot.position > 3 { seek(to: 0); return }
+        if shuffle {
+            while let id = shuffleTrail.popLast() {
+                if let item = queue.first(where: { $0.id == id }) { play(item, origin: origin, resume: false); return }
+            }
+        }
+        guard let cur = current, let i = queue.firstIndex(where: { $0.id == cur.id }) else { return }
+        let target = i > 0 ? queue[i - 1] : (repeatMode == .all ? queue.last : nil)
+        if let target { play(target, origin: origin, resume: false) }
     }
 
-    var hasNext: Bool {
-        guard let cur = current, let i = queue.firstIndex(where: { $0.id == cur.id }) else { return false }
-        return i + 1 < queue.count
+    /// Pick a random item from the queue (or the given pool) and play it.
+    func playRandom(from pool: [PlayableItem]? = nil, origin: PlaybackOrigin) {
+        let source = pool ?? queue
+        guard let item = source.filter({ $0.id != current?.id }).randomElement() ?? source.first else { return }
+        shuffle = true
+        play(item, queue: pool, origin: origin, resume: false)
     }
-    var hasPrevious: Bool {
-        guard let cur = current, let i = queue.firstIndex(where: { $0.id == cur.id }) else { return false }
-        return i > 0
+
+    func replay() {
+        if snapshot.isSeekable { seek(to: 0); resume() }
+        else if let cur = current { play(cur, origin: origin, resume: false) }
     }
+
+    func toggleShuffle() { shuffle.toggle(); shuffleTrail.removeAll() }
+    func cycleRepeat() { repeatMode = repeatMode.next }
+
+    var hasNext: Bool { queue.count > 1 || repeatMode != .off }
+    var hasPrevious: Bool { queue.count > 1 || snapshot.position > 3 || repeatMode == .all }
 
     func retry() {
         guard let item = current else { return }
@@ -249,7 +296,12 @@ final class PlaybackController {
 
         if snap.state == .ended {
             persistProgress(force: true)
-            if hasNext, current?.isLive == false { next() }
+            guard current?.isLive == false else { return }
+            // Repeat/shuffle are explicit intents → continue automatically.
+            if repeatMode != .off || shuffle, let item = upcoming(auto: true) {
+                if item.id == current?.id { replay() } else { play(item, origin: origin, resume: false) }
+            }
+            // Otherwise stay on .ended; the players show Replay / Next / Random.
         }
     }
 
