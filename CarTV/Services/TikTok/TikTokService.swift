@@ -43,9 +43,39 @@ final class TikTokService {
                 self.append(items, to: .forYou); self.loading.remove(.forYou); self.waitTimers[.forYou]?.cancel()
                 if !items.isEmpty { self.error = nil }
             }
+            // If the player is walking this feed, hand it the new tail so Next keeps going.
+            Task { @MainActor in await self.extendPlayerQueue(from: feed == .following ? .following : .forYou) }
         }
         if session.isSignedIn { Task { @MainActor in engine.start() } }
+
+        // Player ran off the end of the feed → load more, then it advances on its own.
+        Task { @MainActor in
+            AppEnvironment.shared.playback.queueExhausted = { [weak self] in
+                guard let self, let feed = self.activeFeedForPlayer else { return }
+                self.loadMore(feed)
+            }
+        }
     }
+
+    /// Which feed the player's current queue came from (nil if it's not playing TikTok).
+    private(set) var activeFeedForPlayer: Feed?
+
+    @MainActor
+    private func extendPlayerQueue(from feed: Feed) async {
+        let pb = AppEnvironment.shared.playback
+        guard pb.current?.ref.kind == .tiktok, activeFeedForPlayer == feed else { return }
+        let all = items(for: feed)
+        let have = Set(pb.queue.map(\.id))
+        let missing = all.filter { !have.contains($0.playableID) }
+        guard !missing.isEmpty else { return }
+        pb.extendQueue(with: await proxiedQueue(missing))
+        // Auto-resume if the player stalled at the end waiting for this.
+        if !pb.isPlaying, pb.snapshot.state == .ended || pb.snapshot.state == .idle { pb.next() }
+    }
+
+    /// Mark which feed the player is walking. Call when starting playback from a feed.
+    @MainActor
+    func playerStarted(feed: Feed) { activeFeedForPlayer = feed }
 
     func items(for feed: Feed) -> [TTVideo] { feed == .forYou ? forYou : following }
 
@@ -82,6 +112,14 @@ final class TikTokService {
     @MainActor
     func prefetchIfNeeded(_ feed: Feed, index: Int) {
         if items(for: feed).count - index <= 4 { loadMore(feed) }
+    }
+
+    /// Player-driven prefetch: the car's Next button doesn't move the phone pager.
+    @MainActor
+    func prefetchForPlayer() {
+        let pb = AppEnvironment.shared.playback
+        guard let feed = activeFeedForPlayer, let i = pb.currentIndex else { return }
+        if pb.queue.count - i <= 4 { loadMore(feed) }
     }
 
     private func append(_ new: [TTVideo], to feed: Feed) {

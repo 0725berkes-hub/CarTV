@@ -407,16 +407,34 @@ final class PlaybackController {
     /// Next item honouring shuffle/repeat; nil when the queue is exhausted.
     private func upcoming(auto: Bool) -> PlayableItem? {
         guard let cur = current else { return nil }
-        if auto, repeatMode == .one { return cur }
-        if shuffle {
+        // Feeds (TikTok) are linear and endless: no shuffle, no repeat, no wrap-around.
+        // Ask the feed for more instead of looping the few items we happen to hold.
+        let isFeed = cur.ref.kind == .tiktok
+        if auto, repeatMode == .one, !isFeed { return cur }
+        if shuffle, !isFeed {
             let others = queue.filter { $0.id != cur.id }
             guard !others.isEmpty else { return repeatMode == .all || !auto ? cur : nil }
             return others.randomElement()
         }
         guard let i = queue.firstIndex(where: { $0.id == cur.id }) else { return nil }
         if i + 1 < queue.count { return queue[i + 1] }
+        if isFeed { queueExhausted?(); return nil }
         return (repeatMode == .all || !auto) && !queue.isEmpty ? queue.first : nil
     }
+
+    /// Called when a linear feed runs out of loaded items; the owner tops up the queue.
+    var queueExhausted: (() -> Void)?
+
+    /// Append newly loaded items to the live queue without disturbing the current index.
+    func extendQueue(with items: [PlayableItem]) {
+        let known = Set(queue.map(\.id))
+        let fresh = items.filter { !known.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        queue.append(contentsOf: fresh)
+    }
+
+    /// Index of the current item in the queue, for callers that prefetch near the end.
+    var currentIndex: Int? { current.flatMap { c in queue.firstIndex { $0.id == c.id } } }
 
     /// The current item was deleted from the library: advance past it (or stop) and
     /// drop it from the queue so previous/shuffle never land on it again.

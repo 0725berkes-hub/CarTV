@@ -55,6 +55,7 @@ struct CarTikTokView: View {
                                     Task { @MainActor in
                                         let q = await tt.proxiedQueue(items, forCar: true)
                                         if let item = q.first(where: { $0.id == v.playableID }) {
+                                            tt.playerStarted(feed: feed)
                                             playback.play(item, queue: q, origin: .car, resume: false)
                                         }
                                     }

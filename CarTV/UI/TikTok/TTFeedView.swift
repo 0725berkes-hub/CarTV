@@ -92,6 +92,12 @@ struct TTFeedView: View {
                 .onChange(of: items.count) { _, _ in
                     if playback.current?.ref.kind != .tiktok, items.indices.contains(index) { play(items[index], queue: items, tt: tt) }
                 }
+                .onChange(of: playback.current?.id) { _, id in
+                    // Player moved (car Next / auto-advance) → follow it in the pager.
+                    guard let id, let i = items.firstIndex(where: { $0.playableID == id }), i != index else { return }
+                    index = i
+                    tt.prefetchForPlayer()
+                }
             }
         }
         .ignoresSafeArea()
@@ -103,6 +109,7 @@ struct TTFeedView: View {
             // Queue = the whole loaded feed, so car next/prev and auto-advance walk the same list.
             let q = await tt.proxiedQueue(queue)
             guard let item = q.first(where: { $0.id == v.playableID }), playback.current?.id != item.id else { return }
+            tt.playerStarted(feed: feed)
             playback.play(item, queue: q, origin: .phone, resume: false, presentPlayer: false)
         }
     }
