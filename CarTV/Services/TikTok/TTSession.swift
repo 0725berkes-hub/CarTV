@@ -66,6 +66,18 @@ final class TTSession {
         Log.network.info("TikTok: adopted \(map.count) cookies")
     }
 
+    /// Re-read the shared WebKit cookie store. The hidden engine page rotates
+    /// tt_chain_token / msToken as it browses; the CDN wants the *current* ones.
+    @MainActor
+    func syncFromWebKit() async {
+        let all = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        var changed = false
+        for c in all where c.domain.hasSuffix("tiktok.com") {
+            if cookies[c.name] != c.value { cookies[c.name] = c.value; changed = true }
+        }
+        if changed { persist() }
+    }
+
     /// Apply Set-Cookie rotations (msToken etc.) from an API response.
     func absorb(_ response: HTTPURLResponse) {
         guard let url = response.url else { return }

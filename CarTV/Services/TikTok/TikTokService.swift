@@ -133,7 +133,9 @@ final class TikTokService {
         Task.detached(priority: .userInitiated) { [headers = client.mediaHeaders] in
             var req = URLRequest(url: url)
             headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
-            guard let (tmp, resp) = try? await URLSession.shared.download(for: req),
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.httpCookieStorage = nil; cfg.httpShouldSetCookies = false    // keep our Cookie header
+            guard let (tmp, resp) = try? await URLSession(configuration: cfg).download(for: req),
                   (resp as? HTTPURLResponse)?.statusCode == 200 else {
                 Log.media.error("TikTok save failed: \(v.id, privacy: .public)"); return
             }
@@ -165,6 +167,7 @@ final class TikTokService {
     }
 
     func proxiedQueue(_ list: [TTVideo], forCar: Bool = false) async -> [PlayableItem] {
+        await session.syncFromWebKit()          // latest tt_chain_token before the CDN sees us
         var out: [PlayableItem] = []; out.reserveCapacity(list.count)
         for v in list { out.append(await proxiedPlayable(v, forCar: forCar)) }
         return out

@@ -106,7 +106,13 @@ actor TTMediaProxy {
         up.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let delegate = RelayDelegate(connection: c)
-        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        // URLSession silently drops a hand-set "Cookie" header and substitutes its own
+        // (empty) cookie storage. Turn that machinery off so our header goes on the wire.
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpCookieStorage = nil
+        cfg.httpShouldSetCookies = false
+        cfg.httpCookieAcceptPolicy = .never
+        let session = URLSession(configuration: cfg, delegate: delegate, delegateQueue: nil)
         delegate.session = session
         session.dataTask(with: up).resume()
     }
@@ -140,7 +146,11 @@ nonisolated private final class RelayDelegate: NSObject, URLSessionDataDelegate,
         }
         if headers["Accept-Ranges"] == nil { headers["Accept-Ranges"] = "bytes" }
         if headers["Content-Type"] == nil { headers["Content-Type"] = "video/mp4" }
-        if http.statusCode >= 400 { Log.player.error("TikTok proxy upstream \(http.statusCode)") }
+        if http.statusCode >= 400 {
+            let sent = dataTask.originalRequest?.allHTTPHeaderFields ?? [:]
+            let cookieNames = (sent["Cookie"] ?? "").split(separator: ";").map { $0.split(separator: "=").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? "" }
+            Log.player.error("TikTok proxy upstream \(http.statusCode) host=\(response.url?.host ?? "?", privacy: .public) referer=\(sent["Referer"] ?? "-", privacy: .public) cookies=\(cookieNames.joined(separator: ","), privacy: .public)")
+        }
         var head = "HTTP/1.1 \(http.statusCode) \(TTMediaProxy.statusText(http.statusCode))\r\n"
         for (k, v) in headers { head += "\(k): \(v)\r\n" }
         head += "Connection: close\r\n\r\n"
