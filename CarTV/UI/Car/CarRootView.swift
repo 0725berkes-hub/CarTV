@@ -190,8 +190,9 @@ struct CarHeader: View {
 
     var body: some View {
         // Tabs are centered when alone; when Now Playing is present they share the row.
+        // A back pill is navigation, not a tab — it always sits at the leading edge.
         HStack(spacing: Theme.s3) {
-            if nowPlaying == nil { Spacer(minLength: 0) }
+            if nowPlaying == nil && route == nil { Spacer(minLength: 0) }
 
             ZStack {
                 if let route {

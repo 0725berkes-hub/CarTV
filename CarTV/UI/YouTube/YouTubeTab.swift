@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// YouTube tab root: segmented Home / Subscriptions / Library with search in the bar.
 struct YouTubeTab: View {
@@ -25,11 +26,14 @@ struct YouTubeTab: View {
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, Theme.s4).padding(.bottom, Theme.s2)
-                        switch section {
-                        case .home: YTFeedView(feed: .home)
-                        case .subscriptions: YTFeedView(feed: .subscriptions)
-                        case .library: YTLibraryView()
+                        Group {
+                            switch section {
+                            case .home: YTFeedView(feed: .home)
+                            case .subscriptions: YTFeedView(feed: .subscriptions)
+                            case .library: YTLibraryView()
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
                 }
             }
@@ -87,7 +91,7 @@ struct YTFeedView: View {
                     .padding(.vertical, Theme.s2).padding(.bottom, Theme.s10)
                 }
                 .refreshable { await load(force: true) }
-            } else if loading {
+            } else if loading || (page == nil && error == nil) {
                 YTSkeletonFeed()
             } else if let error {
                 if error == YTError.signInRequired.errorDescription {
@@ -97,13 +101,21 @@ struct YTFeedView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)") { await load(force: false) }
     }
 
     private func load(force: Bool) async {
         if page != nil, !force { return }
         loading = true; error = nil
-        do { page = try await env.youtube.fetch(feed) } catch { self.error = error.localizedDescription; page = nil }
+        do {
+            let p = try await env.youtube.fetch(feed)
+            Log.network.info("YT feed \(String(describing: feed), privacy: .public): \(p.flatItems.count) items, \(p.shelves.count) shelves")
+            if p.flatItems.isEmpty { error = String(localized: "YouTube returned no videos for this feed."); page = nil } else { page = p }
+        } catch {
+            Log.network.error("YT feed failed: \(error.localizedDescription, privacy: .public)")
+            self.error = error.localizedDescription; page = nil
+        }
         loading = false
     }
 

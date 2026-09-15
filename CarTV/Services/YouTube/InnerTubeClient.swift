@@ -70,13 +70,18 @@ nonisolated final class InnerTubeClient: Sendable {
         for (k, v) in body { payload[k] = v }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, resp) = try await session.data(for: req)
+        let (data, resp): (Data, URLResponse)
+        do { (data, resp) = try await session.data(for: req) }
+        catch { Log.network.error("InnerTube \(endpoint, privacy: .public) transport: \(error.localizedDescription, privacy: .public)"); throw YTError.network(error.localizedDescription) }
         guard let http = resp as? HTTPURLResponse else { throw YTError.network("No response") }
         guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data.prefix(300), encoding: .utf8) ?? ""
+            Log.network.error("InnerTube \(endpoint, privacy: .public) HTTP \(http.statusCode): \(body, privacy: .public)")
             if http.statusCode == 401 { throw YTError.unauthorized }
             throw YTError.network("HTTP \(http.statusCode)")
         }
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw YTError.parse("Not a JSON object") }
+        Log.network.debug("InnerTube \(endpoint, privacy: .public) OK \(data.count) bytes, keys: \(obj.keys.sorted().joined(separator: ","), privacy: .public)")
         return JSONObject(obj)
     }
 
