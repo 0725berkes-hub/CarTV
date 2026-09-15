@@ -51,11 +51,19 @@ nonisolated enum YTItem: Identifiable, Hashable, Sendable {
 }
 
 nonisolated struct YTShelf: Identifiable, Sendable {
-    let id = UUID()
+    /// Stable across mutations. `let id = UUID()` on a value type mints a NEW id on
+    /// every copy-on-write (e.g. appending items), which made SwiftUI treat the
+    /// grown shelf as a different view and re-lay out the feed → scroll jumps.
+    var id: String
     var title: String?
     var items: [YTItem]
     /// Per-shelf "load more" token (TV layout paginates each shelf separately).
     var continuation: String?
+
+    init(title: String?, items: [YTItem], continuation: String? = nil) {
+        self.title = title; self.items = items; self.continuation = continuation
+        self.id = (title ?? "•") + "|" + (items.first?.id ?? UUID().uuidString)
+    }
 }
 
 nonisolated struct YTPage: Sendable {

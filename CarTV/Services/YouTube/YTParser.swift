@@ -264,11 +264,12 @@ nonisolated enum YTParser {
             let tv = json["contents"]["singleColumnWatchNextResults"]
             let autoplayIDs = tv["autoplay"]["autoplay"]["sets"].array.compactMap { $0["autoplayVideoRenderer"].find("watchEndpoint")["videoId"].string }
             let pivot = collectItems(tv["pivot"]).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
-            // Autoplay picks first (as stubs if the pivot doesn't list them), then the shelves.
+            // Order: YouTube's autoplay picks (only when the shelves carry their
+            // title/thumbnail — never blank stubs), then the "Up next" shelf, then
+            // everything else the pivot lists.
             var seen = Set<String>()
             for id in autoplayIDs where !seen.contains(id) {
-                seen.insert(id)
-                related.append(pivot.first { $0.id == id } ?? YTVideo(id: id, title: ""))
+                if let v = pivot.first(where: { $0.id == id }) { seen.insert(id); related.append(v) }
             }
             for v in pivot where !seen.contains(v.id) { seen.insert(v.id); related.append(v) }
             continuation = tv["pivot"].findAll("continuationCommand").first?["token"].string

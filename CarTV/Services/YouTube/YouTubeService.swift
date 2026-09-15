@@ -103,9 +103,18 @@ final class YouTubeService {
                 let seed = String(id.dropFirst(2)).replacingOccurrences(of: "MM", with: "")
                 json = try await api.next(videoID: seed.isEmpty ? "" : seed, playlistID: id, continuation: continuation, accessToken: token)
                 var page = YTPage(shelves: [], continuation: nil)
-                let vids = YTParser.collectItems(json["contents"].find("playlist")).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
-                let fallback = vids.isEmpty ? YTParser.watch(json).related : vids
-                page.shelves = [YTShelf(title: String(localized: "Mix"), items: fallback.map { .video($0) })]
+                // TV layout: the mix queue is the "Up next" shelf whose tiles all belong
+                // to the mix (mdxExpandedVideoList lists the ids). WEB layout: the
+                // `playlist` panel. Fall back to related if neither exists.
+                let mixIDs = Set(json["mdxExpandedVideoList"]["videoIds"].array.compactMap(\.string))
+                let all = YTParser.collectItems(json["contents"]).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+                var vids = mixIDs.isEmpty ? [] : all.filter { mixIDs.contains($0.id) && !$0.title.isEmpty }
+                if vids.isEmpty { vids = YTParser.collectItems(json["contents"].find("playlist")).compactMap { if case .video(let v) = $0 { return v } else { return nil } } }
+                if vids.isEmpty { vids = YTParser.watch(json).related }
+                // Seed video first if it isn't already.
+                if !seed.isEmpty, !vids.contains(where: { $0.id == seed }), let seedVideo = all.first(where: { $0.id == seed }) { vids.insert(seedVideo, at: 0) }
+                var uniq = Set<String>(); vids = vids.filter { uniq.insert($0.id).inserted }
+                page.shelves = [YTShelf(title: String(localized: "Mix"), items: vids.map { .video($0) })]
                 if continuation == nil { pageCache[key] = (page, Date()) }
                 return page
             }
@@ -114,7 +123,7 @@ final class YouTubeService {
             let params: String? = switch tab { case .videos: "EgZ2aWRlb3PyBgQKAjoA"; case .live: "EgdzdHJlYW1z8gYECgJ6AA%3D%3D"; case .playlists: "EglwbGF5bGlzdHPyBgQKAkIA" }
             json = try await api.browse(id, params: params, continuation: continuation, accessToken: token)
         }
-        let page = YTParser.page(json)
+        let page = Self.dedupe(YTParser.page(json))
         if continuation == nil { pageCache[key] = (page, Date()) }
         return page
     }
@@ -132,6 +141,13 @@ final class YouTubeService {
         let token = await auth.token()
         let json = try await api.browse(id, params: "EgZ2aWRlb3PyBgQKAjoA", accessToken: token)
         return (YTParser.channelHeader(json, id: id), YTParser.page(json))
+    }
+
+    /// Remove items already present earlier on the page (shelves overlap a lot on TV Home).
+    nonisolated static func dedupe(_ page: YTPage) -> YTPage {
+        var seen = Set<String>(); var p = page
+        p.shelves = p.shelves.map { sh in var s = sh; s.items = s.items.filter { seen.insert($0.id).inserted }; return s }.filter { !$0.items.isEmpty }
+        return p
     }
 
     /// Drop cached pages so the next fetch hits the network (Refresh button).

@@ -49,7 +49,11 @@ struct CarYouTubeView: View {
 
             Group {
                 if let page {
-                    let videos = page.flatItems.compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+                    var seen = Set<String>()
+                    let videos = page.flatItems.compactMap { item -> YTVideo? in
+                        guard case .video(let v) = item, seen.insert(v.id).inserted else { return nil }
+                        return v
+                    }
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
                             ForEach(videos) { v in CarYTCard(video: v, queue: videos) }
