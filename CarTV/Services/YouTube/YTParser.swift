@@ -15,7 +15,7 @@ nonisolated enum YTParser {
         let shelfRenderers = json.findAll("shelfRenderer") + json.findAll("richShelfRenderer") + json.findAll("itemSectionRenderer")
         var seenIDs = Set<String>()
         for shelf in shelfRenderers {
-            let title = shelf["title"].text
+            let title = shelf["title"].text ?? shelf["headerRenderer"].find("title").text
             let items = collectItems(shelf).filter { seenIDs.insert($0.id).inserted }
             if !items.isEmpty { shelves.append(YTShelf(title: title, items: items)) }
         }
@@ -25,6 +25,7 @@ nonisolated enum YTParser {
 
         continuation = json.findAll("continuationCommand").compactMap { $0["token"].string }.first
             ?? json.findAll("nextContinuationData").compactMap { $0["continuation"].string }.first
+            ?? json.findAll("continuationEndpoint").compactMap { $0["continuationCommand"]["token"].string }.first
         return YTPage(shelves: shelves, continuation: continuation)
     }
 
@@ -39,6 +40,9 @@ nonisolated enum YTParser {
                 }
                 if let l = d["lockupViewModel"] {   // new-style home/search cards
                     if let item = lockup(JSONObject(l)) { out.append(item) }; return
+                }
+                if let t = d["tileRenderer"] {      // TV client cards
+                    if let item = tile(JSONObject(t)) { out.append(item) }; return
                 }
                 if let c = d["channelRenderer"] ?? d["gridChannelRenderer"] {
                     if let ch = channel(JSONObject(c)) { out.append(.channel(ch)) }; return
@@ -111,6 +115,50 @@ nonisolated enum YTParser {
             v.progressFraction = Double(pct) / 100
         }
         return .video(v)
+    }
+
+    /// `tileRenderer` — TVHTML5's card. Videos, playlists/mixes and channels all use it.
+    static func tile(_ t: JSONObject) -> YTItem? {
+        let raw = JSONObject(t.raw)
+        // Skip ads.
+        if !raw.findAll("adBadgeViewModel").isEmpty { return nil }
+        let meta = t["metadata"]["tileMetadataRenderer"]
+        let title = meta["title"].text ?? ""
+        let header = t["header"]["tileHeaderRenderer"]
+        let thumb = bestThumb(header["thumbnail"]["thumbnails"])
+        let lines = meta["lines"].array.map { line in
+            line["lineRenderer"]["items"].array.compactMap { $0["lineItemRenderer"]["text"].text }.filter { $0 != "•" }
+        }
+        let flat = lines.flatMap { $0 }
+        let select = t["onSelectCommand"]
+        let watch = select.find("watchEndpoint")
+        let browse = select.find("browseEndpoint")
+
+        if let vid = watch["videoId"].string {
+            var v = YTVideo(id: vid, title: title)
+            v.thumbnailURL = thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg")
+            v.channelName = lines.first?.first
+            v.viewsText = flat.first { $0.localizedCaseInsensitiveContains("view") }
+            v.publishedText = flat.first { $0.localizedCaseInsensitiveContains("ago") || $0.localizedCaseInsensitiveContains("Streamed") }
+            for o in header["thumbnailOverlays"].array {
+                let ts = o["thumbnailOverlayTimeStatusRenderer"]
+                if ts.exists {
+                    if ts["style"].string == "LIVE" || ts["text"].text?.uppercased() == "LIVE" { v.isLive = true }
+                    else if let d = ts["text"].text, let secs = parseDuration(d) { v.durationText = d; v.durationSeconds = secs }
+                }
+                if let pct = o["thumbnailOverlayResumePlaybackRenderer"]["percentDurationWatched"].int { v.progressFraction = Double(pct) / 100 }
+            }
+            // A "Mix" tile is a radio playlist; still playable as a video with a playlist context.
+            return .video(v)
+        }
+        if let bid = browse["browseId"].string {
+            if bid.hasPrefix("UC") {
+                return .channel(YTChannel(id: bid, name: title, avatarURL: thumb, subscribersText: flat.first))
+            }
+            let pid = bid.hasPrefix("VL") ? String(bid.dropFirst(2)) : bid
+            return .playlist(YTPlaylist(id: pid, title: title, channelName: lines.first?.first, thumbnailURL: thumb, videoCountText: flat.first { $0.localizedCaseInsensitiveContains("video") }))
+        }
+        return nil
     }
 
     static func channel(_ r: JSONObject) -> YTChannel? {

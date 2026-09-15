@@ -27,6 +27,10 @@ nonisolated final class InnerTubeClient: Sendable {
     static let android = ClientProfile(name: "ANDROID", version: "20.36.35",
         userAgent: "com.google.android.youtube/20.36.35 (Linux; U; Android 14) gzip", clientId: 3,
         sendableExtra: ["androidSdkVersion": "34", "osName": "Android", "osVersion": "14"])
+    /// The YouTube-on-TV client. OAuth tokens from the device flow are minted for
+    /// this client, so every *authenticated* request must be made as it.
+    static let tvhtml5 = ClientProfile(name: "TVHTML5", version: "7.20250915.10.00",
+        userAgent: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version", clientId: 7)
     static let tv = ClientProfile(name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", version: "2.0",
         userAgent: "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15", clientId: 85)
 
@@ -101,7 +105,7 @@ nonisolated final class InnerTubeClient: Sendable {
                 if client.name.hasPrefix("TVHTML5") {
                     body["context"] = nil
                 }
-                let json = try await call("player", client: client, body: body, accessToken: client.name == "IOS" ? accessToken : nil)
+                let json = try await call("player", client: client, body: body, accessToken: nil)
                 let resp = try YTPlayerResponse(json: json)
                 if resp.isPlayable, !resp.formats.isEmpty || resp.hlsManifestURL != nil {
                     Log.network.info("YT player OK via \(client.name, privacy: .public) for \(videoID, privacy: .public)")
@@ -118,13 +122,16 @@ nonisolated final class InnerTubeClient: Sendable {
 
     // MARK: - Browse / search / next
 
+    /// WEB when anonymous (richer renderers), TVHTML5 when signed in (token-bound).
+    private func browsingClient(_ accessToken: String?) -> ClientProfile { accessToken == nil ? Self.web : Self.tvhtml5 }
+
     func browse(_ browseId: String, params: String? = nil, continuation: String? = nil, accessToken: String? = nil) async throws -> JSONObject {
         var body: [String: Any] = [:]
         if let continuation { body["continuation"] = continuation } else {
             body["browseId"] = browseId
             if let params { body["params"] = params }
         }
-        return try await call("browse", body: body, accessToken: accessToken)
+        return try await call("browse", client: browsingClient(accessToken), body: body, accessToken: accessToken)
     }
 
     func search(_ query: String, params: String? = nil, continuation: String? = nil, accessToken: String? = nil) async throws -> JSONObject {
@@ -133,7 +140,7 @@ nonisolated final class InnerTubeClient: Sendable {
             body["query"] = query
             if let params { body["params"] = params }
         }
-        return try await call("search", body: body, accessToken: accessToken)
+        return try await call("search", client: browsingClient(accessToken), body: body, accessToken: accessToken)
     }
 
     /// Watch page data: related videos, comments continuation, like state.
@@ -143,7 +150,7 @@ nonisolated final class InnerTubeClient: Sendable {
             body["videoId"] = videoID
             if let playlistID { body["playlistId"] = playlistID }
         }
-        return try await call("next", body: body, accessToken: accessToken)
+        return try await call("next", client: browsingClient(accessToken), body: body, accessToken: accessToken)
     }
 
     /// Search-as-you-type suggestions (public endpoint, not InnerTube).
@@ -161,16 +168,16 @@ nonisolated final class InnerTubeClient: Sendable {
     // MARK: - Actions (need auth)
 
     func like(videoID: String, accessToken: String, remove: Bool = false) async throws {
-        _ = try await call(remove ? "like/removelike" : "like/like", body: ["target": ["videoId": videoID]], accessToken: accessToken)
+        _ = try await call(remove ? "like/removelike" : "like/like", client: Self.tvhtml5, body: ["target": ["videoId": videoID]], accessToken: accessToken)
     }
     func dislike(videoID: String, accessToken: String) async throws {
-        _ = try await call("like/dislike", body: ["target": ["videoId": videoID]], accessToken: accessToken)
+        _ = try await call("like/dislike", client: Self.tvhtml5, body: ["target": ["videoId": videoID]], accessToken: accessToken)
     }
     func subscribe(channelID: String, accessToken: String, remove: Bool = false) async throws {
-        _ = try await call(remove ? "subscription/unsubscribe" : "subscription/subscribe", body: ["channelIds": [channelID]], accessToken: accessToken)
+        _ = try await call(remove ? "subscription/unsubscribe" : "subscription/subscribe", client: Self.tvhtml5, body: ["channelIds": [channelID]], accessToken: accessToken)
     }
     func addToWatchLater(videoID: String, accessToken: String) async throws {
-        _ = try await call("browse/edit_playlist", body: ["playlistId": "WL", "actions": [["addedVideoId": videoID, "action": "ACTION_ADD_VIDEO"]]], accessToken: accessToken)
+        _ = try await call("browse/edit_playlist", client: Self.tvhtml5, body: ["playlistId": "WL", "actions": [["addedVideoId": videoID, "action": "ACTION_ADD_VIDEO"]]], accessToken: accessToken)
     }
 }
 

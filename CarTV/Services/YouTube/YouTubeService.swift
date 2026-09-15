@@ -52,6 +52,15 @@ final class YouTubeService {
         case .home:
             guard token != nil else { return try await fetch(.explore, continuation: continuation) }
             json = try await api.browse("FEwhat_to_watch", continuation: continuation, accessToken: token)
+            // Skip the "Personalized mix" radio tiles that don't map to a single video well.
+            var page = YTParser.page(json)
+            page.shelves = page.shelves.map { shelf in
+                var s = shelf
+                s.items = s.items.filter { if case .video(let v) = $0 { return !(v.channelName?.localizedCaseInsensitiveContains("mix for you") ?? false) }; return true }
+                return s
+            }.filter { !$0.items.isEmpty }
+            if continuation == nil { pageCache[key] = (page, Date()) }
+            return page
         case .explore:
             // One search per topic, in parallel → one shelf each. No continuation.
             if continuation != nil { return YTPage(shelves: [], continuation: nil) }
