@@ -81,6 +81,7 @@ final class AppSettings {
         languageOverride = defaults.string(forKey: Keys.language)
         subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
         mytvEnabled = defaults.bool(forKey: Keys.mytv)
+        tiktokEnabled = defaults.bool(forKey: Keys.tiktok)
         downloadFolderID = defaults.string(forKey: Keys.downloadFolder).flatMap(UUID.init)
         rapidAPIKey = defaults.string(forKey: Keys.rapidAPIKey)
     }
@@ -97,6 +98,7 @@ final class AppSettings {
         languageOverride = defaults.string(forKey: Keys.language)
         subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
         mytvEnabled = defaults.bool(forKey: Keys.mytv)
+        tiktokEnabled = defaults.bool(forKey: Keys.tiktok)
         downloadFolderID = defaults.string(forKey: Keys.downloadFolder).flatMap(UUID.init)
         rapidAPIKey = defaults.string(forKey: Keys.rapidAPIKey)
     }
