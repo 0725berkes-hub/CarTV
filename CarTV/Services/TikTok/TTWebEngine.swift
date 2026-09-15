@@ -98,8 +98,13 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
         web.evaluateJavaScript("window.__cartvMore ? window.__cartvMore('\(kind)') : 'no-hook'") { [weak self] r, _ in
             let result = (r as? String) ?? "nil"
             if result == "no-url" {
-                // Page hasn't fired its first request yet — nudge it.
-                self?.web?.evaluateJavaScript("window.__cartvScroll && window.__cartvScroll()") { _, _ in }
+                if kind == "saved" || kind == "liked" {
+                    // Tab hasn't taken yet — click it again; scrolling now would only load more of your posts.
+                    self?.web?.evaluateJavaScript("window.__cartvTab && window.__cartvTab('\(kind == "saved" ? "favorites" : "liked")')") { _, _ in }
+                } else {
+                    // Page hasn't fired its first request yet — nudge it.
+                    self?.web?.evaluateJavaScript("window.__cartvScroll && window.__cartvScroll()") { _, _ in }
+                }
             } else if result == "end", let self {
                 // List exhausted: deliver an empty page so the consumer clears its loading state.
                 Task { @MainActor in self.onItems?(self.currentFeed, []) }
@@ -129,8 +134,17 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             }
             // Profile sub-tabs are client-side; select the one we want.
             switch currentFeed {
-            case .saved: _ = try? await webView.evaluateJavaScript("window.__cartvTab && window.__cartvTab('favorites')")
-            case .liked: _ = try? await webView.evaluateJavaScript("window.__cartvTab && window.__cartvTab('liked')")
+            case .saved, .liked:
+                let name = { if case .saved = currentFeed { return "favorites" } else { return "liked" } }()
+                // The SPA renders the tab bar late; retry until the click lands.
+                var clicked = false
+                for _ in 0..<12 {
+                    if let ok = try? await webView.evaluateJavaScript("window.__cartvTab ? window.__cartvTab('\(name)') : false") as? Bool, ok { clicked = true; break }
+                    try? await Task.sleep(for: .milliseconds(400))
+                }
+                Log.network.info("TikTok engine: \(name, privacy: .public) tab \(clicked ? "selected" : "NOT FOUND", privacy: .public)")
+                pendingScrolls = 0
+                return   // the tab click fires the first list request itself
             default: break
             }
             // Kick a scroll so the first XHR fires even if SSR already painted a page.
@@ -169,15 +183,24 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             let raw = (json["itemList"] as? [[String: Any]]) ?? (json["item_list"] as? [[String: Any]]) ?? []
             let items = raw.compactMap(TTParser.video)
-            // Route by what the page asked for, not by what we think we loaded — the
-            // For You page also prefetches other lists.
+            // Route strictly by endpoint. The profile page opens on its Videos tab and
+            // fires /post/item_list (your own posts) before we switch tabs — that must
+            // never be filed as Saved or Liked.
             let feed: Feed
-            if url.contains("/api/user/collect/item_list") || url.contains("favorite_item_list"), case .saved = currentFeed { feed = currentFeed }
-            else if url.contains("/api/favorite/item_list") || url.contains("/api/user/favorite"), case .liked = currentFeed { feed = currentFeed }
-            else if url.contains("/api/post/item_list"), case .profile = currentFeed { feed = currentFeed }
-            else if url.contains("from_page=following") { feed = .following }
-            else if url.contains("/api/recommend/") { feed = .forYou }
-            else { feed = currentFeed }
+            if url.contains("/api/user/collect/item_list") || url.contains("favorite_item_list") {
+                guard case .saved = currentFeed else { return }
+                feed = currentFeed
+            } else if url.contains("/api/favorite/item_list") || url.contains("/api/user/favorite") {
+                guard case .liked = currentFeed else { return }
+                feed = currentFeed
+            } else if url.contains("/api/post/item_list") {
+                guard case .profile = currentFeed else { return }   // own posts while on Saved/Liked → drop
+                feed = currentFeed
+            } else if url.contains("/api/recommend/") {
+                feed = url.contains("from_page=following") ? .following : .forYou
+            } else {
+                return
+            }
             Task { @MainActor in
                 lastCaptureAt = .now
                 Log.network.info("TikTok engine: captured \(items.count) items from \(URL(string: url)?.path ?? url, privacy: .public)")
@@ -243,6 +266,7 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       window.__cartvMore = async function (kind) {
         kind = kind || 'fyp';
         if (kind !== 'fyp') {
+          if (!window.__cartvLastURL[kind]) return 'no-url';
           // Profile grids page with a cursor that's inside the signed query, so we can't
           // rewrite it. Scroll the grid to its end instead: the page's own observer fires
           // the next signed request and the hook captures it.
@@ -273,12 +297,23 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
               document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true })); } catch (e) {}
       };
 
-      // Select a profile tab by data-e2e ("favorites" / "liked").
+      // Select a profile tab. data-e2e names have drifted over time, so fall back to
+      // matching the tab's text/aria-label inside the profile tab bar.
       window.__cartvTab = function (name) {
-        const sel = { favorites: '[data-e2e="favorites-tab"], [data-e2e="user-favorites-tab"]', liked: '[data-e2e="liked-tab"], [data-e2e="user-liked-tab"]' }[name];
-        const el = sel && document.querySelector(sel);
-        if (el) { el.click(); post({ kind: 'log', msg: 'clicked tab ' + name }); return true; }
-        post({ kind: 'log', msg: 'tab not found ' + name }); return false;
+        const bySel = { favorites: '[data-e2e="favorites-tab"], [data-e2e="user-favorites-tab"], [data-e2e="profile-favorites-tab"]',
+                        liked:     '[data-e2e="liked-tab"], [data-e2e="user-liked-tab"], [data-e2e="profile-liked-tab"]' }[name];
+        const words = name === 'favorites' ? ['favorites', 'favourites', 'saved'] : ['liked'];
+        let el = bySel && document.querySelector(bySel);
+        if (!el) {
+          const cands = Array.from(document.querySelectorAll('[role="tab"], [class*="PTabItem"], [class*="TabItem"], p[class*="Tab"], div[class*="Tab"] > p'));
+          el = cands.find(e => { const t = ((e.textContent || '') + ' ' + (e.getAttribute('aria-label') || '')).trim().toLowerCase();
+                                 return t.length < 24 && words.some(w => t === w || t.startsWith(w)); });
+        }
+        if (!el) { post({ kind: 'log', msg: 'tab not found ' + name }); return false; }
+        const selected = el.getAttribute('aria-selected') === 'true' || /active|selected/i.test(el.className || '');
+        if (!selected) { el.click(); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+        post({ kind: 'log', msg: (selected ? 'already on tab ' : 'clicked tab ') + name });
+        return true;
       };
 
       // Never let the page play video/audio — we only want the JSON.
