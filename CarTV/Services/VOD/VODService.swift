@@ -227,16 +227,32 @@ nonisolated enum MyTVAPI {
         "uuid": "58182e46-8a20-443e-9e43-9b63bc44589c", "userId": "6414575", "country": "IQ",
     ]
 
+    /// One session for catalogue pulls: generous resource timeout for the 22 MB movie
+    /// list, gzip accepted, no cookies, and it fails fast when there's no network
+    /// instead of waiting for connectivity forever.
+    nonisolated private static let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 30
+        c.timeoutIntervalForResource = 180
+        c.waitsForConnectivity = false
+        c.httpAdditionalHeaders = ["Accept-Encoding": "gzip, deflate", "Accept": "application/json, */*"]
+        return URLSession(configuration: c)
+    }()
+
     nonisolated static func post(_ ep: Endpoint, extra: [String: String] = [:]) async throws -> [[String: Any]] {
-        var req = URLRequest(url: ep.url, timeoutInterval: 90)
+        var req = URLRequest(url: ep.url)
         req.httpMethod = "POST"
         req.httpBody = try JSONSerialization.data(withJSONObject: base.merging(extra) { $1 })
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
+        let t0 = Date()
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "MyTVAPI", code: http.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: "Server returned \(http.statusCode)"])
         }
+        Log.playlist.info("VOD: \(ep.url.lastPathComponent, privacy: .public) \(data.count / 1024) KB in \(Int(Date().timeIntervalSince(t0)))s")
         if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { return arr }
         let plain = try MyTVService.decrypt(String(decoding: data, as: UTF8.self).trimmed)
         guard let arr = try JSONSerialization.jsonObject(with: plain) as? [[String: Any]] else {

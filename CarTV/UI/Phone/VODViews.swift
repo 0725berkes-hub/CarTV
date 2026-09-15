@@ -22,7 +22,7 @@ struct VODHubView: View {
                     searchResults
                 } else {
                     switch vod.phase {
-                    case .loading where vod.movies.isEmpty:
+                    case .idle where vod.movies.isEmpty, .loading where vod.movies.isEmpty:
                         loadingShelves
                     case .failed(let msg) where vod.movies.isEmpty:
                         EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load MyTV+", message: LocalizedStringResource(stringLiteral: msg),
