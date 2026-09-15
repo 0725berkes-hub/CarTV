@@ -54,6 +54,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let gen = generation
         hasEverPlayed = false
         userPaused = false
+        lastTickPosition = -1; frozenTicks = 0
         knownDuration = playable.isLive ? 0 : playable.duration
         snapshot = PlayerSnapshot(state: .loading)
 
@@ -71,9 +72,13 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         newItem.preferredPeakBitRateForExpensiveNetworks = 0
         newItem.startsOnFirstEligibleVariant = true
         if let h = maxHeight { newItem.preferredMaximumResolution = CGSize(width: CGFloat(h) * 16 / 9, height: CGFloat(h)) }
-        // Live streams need AVPlayer's stall management from the first frame; for
-        // VOD we start eagerly and re-enable it once playback begins.
-        player.automaticallyWaitsToMinimizeStalling = playable.isLive
+        // Live streams need AVPlayer's stall management from the first frame, and so
+        // does segmented VOD over the network (YouTube HLS): with waiting off, play()
+        // before the first segments land sets rate 1 on nothing and the clock never
+        // starts — the "pause and resume to make it play" symptom. Only local files
+        // and progressive MP4 start eagerly.
+        let eager = playable.url.isFileURL || playable.streamKind == .mp4
+        player.automaticallyWaitsToMinimizeStalling = !eager
         item = newItem
 
         let refresh: @Sendable (AVPlayerItem, Any) -> Void = { [weak self] _, _ in
@@ -238,10 +243,26 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         item = nil
     }
 
+    private var lastTickPosition: Double = -1
+    private var frozenTicks = 0
+
     private func tick(_ seconds: Double) {
         guard let item else { return }
         var s = snapshot
         s.position = max(0, seconds.isFinite ? seconds : 0)
+        // Watchdog: rate > 0 but the clock isn't moving for ~3s → the pipeline
+        // wedged (common right after start or a far seek). A pause/play cycle is
+        // exactly what the user would do by hand; do it for them once.
+        if player.rate > 0, !userPaused, abs(s.position - lastTickPosition) < 0.05 {
+            frozenTicks += 1
+            if frozenTicks == 6 {
+                Log.player.notice("AVPlayer clock frozen at \(Int(s.position))s; nudging")
+                player.pause(); player.play()
+            }
+        } else {
+            frozenTicks = 0
+        }
+        lastTickPosition = s.position
         let dur = item.duration
         s.duration = (dur.isIndefinite || !dur.seconds.isFinite) ? 0 : dur.seconds
         let seekableWindow = item.seekableTimeRanges.last?.timeRangeValue.duration.seconds ?? 0
