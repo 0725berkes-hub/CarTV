@@ -13,40 +13,55 @@ struct CarYouTubeView: View {
     private struct FeedChip: Identifiable { let id: String; let feed: YouTubeService.Feed; let title: LocalizedStringResource; let symbol: String }
     private let feeds: [FeedChip] = [
         FeedChip(id: "home", feed: .home, title: "Home", symbol: "house.fill"),
-        FeedChip(id: "subs", feed: .subscriptions, title: "Subscriptions", symbol: "rectangle.stack.badge.person.crop"),
         FeedChip(id: "wl", feed: .watchLater, title: "Watch Later", symbol: "clock.fill"),
         FeedChip(id: "history", feed: .history, title: "History", symbol: "clock.arrow.circlepath"),
     ]
+    /// Chips shrink to icons once the grid scrolls, so they stop eating a row.
+    @State private var scrolled = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.s2) {
-                    ForEach(feeds) { chip in
-                        let selected = feed == chip.feed
-                        Button { feed = chip.feed } label: {
-                            Label(chip.title, systemImage: chip.symbol).font(.system(size: m.compact ? 13 : 15, weight: .semibold))
-                                .foregroundStyle(selected ? Color.black : Theme.ink)
-                                .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4).frame(height: m.compact ? 36 : 42)
-                        }
-                        .buttonStyle(CarPressStyle())
-                        .glassEffect(selected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Capsule())
-                    }
+        ZStack(alignment: .top) {
+            content
+                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 24 } action: { _, v in
+                    withAnimation(.snappy(duration: 0.25)) { scrolled = v }
                 }
-                .padding(.horizontal, m.gutter).padding(.vertical, Theme.s2)
-            }
-            .overlay(alignment: .trailing) {
-                // Refresh: drop caches and re-fetch this feed.
-                Button { env.youtube.invalidateFeeds(); reload &+= 1 } label: {
-                    Image(systemName: "arrow.clockwise").font(.system(size: m.compact ? 14 : 17, weight: .semibold)).foregroundStyle(Theme.ink)
-                        .frame(width: m.compact ? 36 : 42, height: m.compact ? 36 : 42)
+            chips
+        }
+    }
+
+    private var chipHeight: CGFloat { scrolled ? (m.compact ? 30 : 36) : (m.compact ? 36 : 42) }
+
+    private var chips: some View {
+        HStack(spacing: Theme.s2) {
+            ForEach(feeds) { chip in
+                let selected = feed == chip.feed
+                Button { feed = chip.feed } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: chip.symbol)
+                        if !scrolled { Text(chip.title) }
+                    }
+                    .font(.system(size: m.compact ? 13 : 15, weight: .semibold))
+                    .foregroundStyle(selected ? Color.black : Theme.ink)
+                    .padding(.horizontal, scrolled ? 12 : (m.compact ? Theme.s3 : Theme.s4)).frame(height: chipHeight)
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(CarPressStyle())
-                .glassEffect(.regular.interactive(), in: Circle())
-                .padding(.trailing, m.gutter)
-                .disabled(page == nil && error == nil)
+                .glassEffect(selected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Capsule())
             }
+            Spacer(minLength: 0)
+            Button { env.youtube.invalidateFeeds(); reload &+= 1 } label: {
+                Image(systemName: "arrow.clockwise").font(.system(size: m.compact ? 14 : 17, weight: .semibold)).foregroundStyle(Theme.ink)
+                    .frame(width: chipHeight, height: chipHeight)
+            }
+            .buttonStyle(CarPressStyle())
+            .glassEffect(.regular.interactive(), in: Circle())
+            .disabled(page == nil && error == nil)
+        }
+        .padding(.horizontal, m.gutter).padding(.vertical, Theme.s2)
+    }
 
+    private var content: some View {
+        VStack(spacing: 0) {
             Group {
                 if let page {
                     var seen = Set<String>()
@@ -62,7 +77,7 @@ struct CarYouTubeView: View {
                                 ProgressView().frame(maxWidth: .infinity, minHeight: 80).task { await loadMore() }
                             }
                         }
-                        .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
+                        .padding(.horizontal, m.gutter).padding(.top, (m.compact ? 36 : 42) + Theme.s3 + Theme.s2).padding(.bottom, m.gutter)
                     }
                 } else if let error {
                     CarEmptyState(symbol: "exclamationmark.triangle", title: "Couldn't load", message: LocalizedStringResource(stringLiteral: error))
