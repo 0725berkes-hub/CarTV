@@ -73,7 +73,7 @@ nonisolated enum HLSBuilder {
     struct Segment: Sendable { let offset: Int64; let length: Int64; let duration: Double }
 
     private static func segments(for f: YTFormat) async throws -> [Segment] {
-        guard let init_ = f.initRange, let idx = f.indexRange else {
+        guard f.initRange != nil, let idx = f.indexRange else {
             // No index → one segment covering the whole file.
             let dur = Double(f.approxDurationMs ?? 0) / 1000
             return [Segment(offset: 0, length: f.contentLength ?? 0, duration: dur)]

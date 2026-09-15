@@ -12,6 +12,13 @@ nonisolated extension String {
     nonisolated var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 
     nonisolated var nilIfEmpty: String? { isEmpty ? nil : self }
+
+    /// First letter for A–Z sectioning; digits/symbols → "#".
+    nonisolated var indexKey: String {
+        guard let c = trimmed.first else { return "#" }
+        let s = String(c).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).uppercased()
+        return s.first?.isLetter == true ? s : "#"
+    }
 }
 
 nonisolated extension URL {

@@ -147,7 +147,7 @@ struct LocalVideosGridView: View {
         let list = sorted
         guard sort == .name, list.count > 24 else { return [("", list)] }
         var groups: [String: [LocalVideo]] = [:]
-        for v in list { groups[CarGrid.indexKey(for: v.title), default: []].append(v) }
+        for v in list { groups[v.title.indexKey, default: []].append(v) }
         return groups.keys.sorted { a, b in
             if a == "#" { return false }; if b == "#" { return true }
             return a.localizedStandardCompare(b) == .orderedAscending
