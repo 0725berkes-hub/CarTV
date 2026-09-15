@@ -190,6 +190,9 @@ final class LibraryStore {
             let vod = AppEnvironment.shared.vod
             if let m = vod.movies.first(where: { $0.playableID == ref.id }) { return PlayableItem(movie: m) }
             return vod.playedItem(id: ref.id)
+        case .youtube:
+            guard let vid = YouTubeService.videoID(from: ref.id) else { return nil }
+            return AppEnvironment.shared.youtube.cachedStub(vid)
         }
     }
 
