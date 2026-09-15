@@ -28,7 +28,7 @@ actor YTChallengeSolver {
         c.timeoutIntervalForRequest = 25
         return URLSession(configuration: c)
     }()
-    private static let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+    private static let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
     // MARK: Player discovery
 
@@ -69,6 +69,52 @@ actor YTChallengeSolver {
     nonisolated private static func signatureTimestamp(in js: String) -> Int? {
         guard let r = js.range(of: #"signatureTimestamp:(\d+)"#, options: .regularExpression) else { return nil }
         return Int(js[r].split(separator: ":").last ?? "")
+    }
+
+    // MARK: Embedded player context
+
+    struct EmbedContext: Sendable {
+        let clientVersion: String
+        let visitorData: String?
+        let client: [String: String]          // full INNERTUBE_CONTEXT.client from the embed page
+        let encryptedContext: String
+        let encryptedHostFlags: String?
+    }
+
+    /// The embed page carries an `embeddedPlayerEncryptedContext`; without it the
+    /// WEB_EMBEDDED_PLAYER `/player` call answers "This video is unavailable" (152-18).
+    func embedContext(videoID: String) async throws -> EmbedContext {
+        var req = URLRequest(url: URL(string: "https://www.youtube.com/embed/\(videoID)?html5=1")!)
+        req.setValue(Self.ua, forHTTPHeaderField: "User-Agent")
+        req.setValue("https://www.reddit.com/", forHTTPHeaderField: "Referer")
+        req.setValue("PREF=hl=en&tz=UTC; SOCS=CAI", forHTTPHeaderField: "Cookie")
+        req.setValue("en-us,en;q=0.5", forHTTPHeaderField: "Accept-Language")
+        let (data, _) = try await session.data(for: req)
+        let html = String(decoding: data, as: UTF8.self)
+
+        func capture(_ pattern: String) -> String? {
+            guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+                  let m = re.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+                  m.numberOfRanges > 1, let r = Range(m.range(at: 1), in: html) else { return nil }
+            return String(html[r])
+        }
+        guard let ctxJSON = capture(#""INNERTUBE_CONTEXT":(\{.*?\}),"INNERTUBE_CONTEXT_CLIENT_NAME""#),
+              let ctxData = ctxJSON.data(using: .utf8),
+              let ctx = try? JSONSerialization.jsonObject(with: ctxData) as? [String: Any],
+              let clientAny = ctx["client"] as? [String: Any],
+              let epc = capture(#""embeddedPlayerEncryptedContext":"([^"]+)""#) else {
+            throw YTError.parse("embed context not found")
+        }
+        var client: [String: String] = [:]
+        for (k, v) in clientAny {
+            if let s = v as? String { client[k] = s }
+            else if let n = v as? NSNumber { client[k] = n.stringValue }
+        }
+        // Numeric field must stay numeric; drop and let the caller set it.
+        client.removeValue(forKey: "utcOffsetMinutes")
+        let version = client["clientVersion"] ?? "2.20260914.00.00"
+        return EmbedContext(clientVersion: version, visitorData: client["visitorData"], client: client,
+                            encryptedContext: epc, encryptedHostFlags: capture(#""encryptedHostFlags":"([^"]+)""#))
     }
 
     // MARK: Solving
