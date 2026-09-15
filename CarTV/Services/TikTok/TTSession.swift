@@ -10,7 +10,10 @@ import WebKit
 @Observable
 final class TTSession {
 
-    enum State: Equatable { case signedOut, signedIn(handle: String?) }
+    enum State: Equatable {
+        case signedOut, signedIn(handle: String?)
+        var handle: String? { if case .signedIn(let h) = self { return h }; return nil }
+    }
     private(set) var state: State = .signedOut
 
     /// Cookie name → value for `.tiktok.com`.

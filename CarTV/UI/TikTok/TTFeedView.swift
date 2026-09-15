@@ -123,7 +123,7 @@ struct TTFeedView: View {
                 HStack(spacing: 0) {
                     ForEach(TikTokService.Feed.allCases) { f in
                         Button { withAnimation(.snappy(duration: 0.25)) { feed = f; index = 0 }; if tt.items(for: f).isEmpty { tt.loadMore(f) } } label: {
-                            Text(f == .forYou ? "For You" : "Following")
+                            Text(f.title)
                                 .font(.system(size: 15, weight: feed == f ? .bold : .semibold))
                                 .foregroundStyle(feed == f ? .white : .white.opacity(0.6))
                                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -148,6 +148,17 @@ struct TTFeedView: View {
             }
             .padding(.top, 54)
             .background(LinearGradient(colors: [.black.opacity(0.5), .clear], startPoint: .top, endPoint: .bottom).frame(height: 140).ignoresSafeArea(), alignment: .top)
+            // If the hidden page isn't logged in, this is TikTok's generic feed, not yours.
+            if tt.engine.isReady, tt.pageUser == nil {
+                Button { showSignIn = true } label: {
+                    Label("Not signed in on TikTok — this isn't your For You. Tap to sign in.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.black)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Theme.amber, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
             Spacer()
         }
         .ignoresSafeArea()

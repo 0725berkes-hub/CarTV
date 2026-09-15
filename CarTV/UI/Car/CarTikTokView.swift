@@ -21,7 +21,7 @@ struct CarTikTokView: View {
                     ForEach(TikTokService.Feed.allCases) { f in
                         let selected = feed == f
                         Button { feed = f; if tt.items(for: f).isEmpty { tt.loadMore(f) } } label: {
-                            Text(f == .forYou ? "For You" : "Following").font(.system(size: m.compact ? 13 : 15, weight: .semibold))
+                            Text(f.title).font(.system(size: m.compact ? 13 : 15, weight: .semibold))
                                 .foregroundStyle(selected ? Color.black : Theme.ink)
                                 .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4).frame(height: m.compact ? 36 : 42)
                                 .contentShape(Capsule())

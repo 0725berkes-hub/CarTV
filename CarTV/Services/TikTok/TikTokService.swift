@@ -12,10 +12,18 @@ final class TikTokService {
     /// Still used for `mediaHeaders` (CDN needs Referer + tt_chain_token) and creator pages.
     let client: TikTokClient
 
-    enum Feed: String, CaseIterable, Identifiable { case forYou, following; var id: String { rawValue } }
+    enum Feed: String, CaseIterable, Identifiable {
+        case forYou, following, saved, liked
+        var id: String { rawValue }
+        var title: LocalizedStringResource {
+            switch self { case .forYou: "For You"; case .following: "Following"; case .saved: "Saved"; case .liked: "Liked" }
+        }
+    }
 
     private(set) var forYou: [TTVideo] = []
     private(set) var following: [TTVideo] = []
+    private(set) var saved: [TTVideo] = []
+    private(set) var liked: [TTVideo] = []
     /// Creator pages, keyed by handle. Filled when the engine visits a profile.
     private(set) var profiles: [String: [TTVideo]] = [:]
     var onProfileItems: ((String, [TTVideo]) -> Void)?
@@ -30,21 +38,25 @@ final class TikTokService {
         client = TikTokClient(session: session)
         engine.onItems = { [weak self] feed, items in
             guard let self else { return }
+            let target: Feed?
             switch feed {
             case .profile(let h):
                 var list = self.profiles[h] ?? []
                 for v in items where !list.contains(where: { $0.id == v.id }) { list.append(v) }
                 self.profiles[h] = list
                 self.onProfileItems?(h, list)
-            case .following:
-                self.append(items, to: .following); self.loading.remove(.following); self.waitTimers[.following]?.cancel()
-                if !items.isEmpty { self.error = nil }
-            case .forYou:
-                self.append(items, to: .forYou); self.loading.remove(.forYou); self.waitTimers[.forYou]?.cancel()
-                if !items.isEmpty { self.error = nil }
+                target = nil
+            case .following: target = .following
+            case .forYou:    target = .forYou
+            case .saved:     target = .saved
+            case .liked:     target = .liked
             }
-            // If the player is walking this feed, hand it the new tail so Next keeps going.
-            Task { @MainActor in await self.extendPlayerQueue(from: feed == .following ? .following : .forYou) }
+            if let t = target {
+                self.append(items, to: t); self.loading.remove(t); self.waitTimers[t]?.cancel()
+                if !items.isEmpty { self.error = nil }
+                // If the player is walking this feed, hand it the new tail so Next keeps going.
+                Task { @MainActor in await self.extendPlayerQueue(from: t) }
+            }
         }
         if session.isSignedIn { Task { @MainActor in engine.start() } }
 
@@ -77,15 +89,30 @@ final class TikTokService {
     @MainActor
     func playerStarted(feed: Feed) { activeFeedForPlayer = feed }
 
-    func items(for feed: Feed) -> [TTVideo] { feed == .forYou ? forYou : following }
+    func items(for feed: Feed) -> [TTVideo] {
+        switch feed { case .forYou: forYou; case .following: following; case .saved: saved; case .liked: liked }
+    }
+
+    /// The handle the hidden page is logged in as. nil = guest = not your FYP.
+    var pageUser: String? { engine.pageUser }
 
     // MARK: Load
+
+    private func engineTarget(_ feed: Feed) -> TTWebEngine.Feed {
+        let me = session.state.handle ?? engine.pageUser ?? ""
+        switch feed {
+        case .forYou: return .forYou
+        case .following: return .following
+        case .saved: return .saved(handle: me)
+        case .liked: return .liked(handle: me)
+        }
+    }
 
     @MainActor
     func loadMore(_ feed: Feed) {
         guard session.isSignedIn, !loading.contains(feed) else { return }
         loading.insert(feed)
-        let target: TTWebEngine.Feed = feed == .forYou ? .forYou : .following
+        let target = engineTarget(feed)
         if engine.currentFeed != target { engine.load(target) } else { engine.requestMore() }
         // If nothing arrives in 12 s the page is stuck (captcha, login wall, network). Surface it.
         waitTimers[feed]?.cancel()
@@ -103,10 +130,10 @@ final class TikTokService {
     func refresh(_ feed: Feed) async {
         guard session.isSignedIn else { return }
         seen.removeAll()
-        if feed == .forYou { forYou = [] } else { following = [] }
+        switch feed { case .forYou: forYou = []; case .following: following = []; case .saved: saved = []; case .liked: liked = [] }
         error = nil
         loading.insert(feed)
-        engine.load(feed == .forYou ? .forYou : .following)   // fresh page → fresh batch
+        engine.load(engineTarget(feed))   // fresh page → fresh batch
     }
 
     @MainActor
@@ -125,7 +152,7 @@ final class TikTokService {
     private func append(_ new: [TTVideo], to feed: Feed) {
         var list = items(for: feed)
         for v in new where !seen.contains(v.id) { seen.insert(v.id); list.append(v) }
-        if feed == .forYou { forYou = list } else { following = list }
+        switch feed { case .forYou: forYou = list; case .following: following = list; case .saved: saved = list; case .liked: liked = list }
     }
 
     /// Open a creator's profile in the engine; posts arrive via `profiles[handle]`.
@@ -139,7 +166,7 @@ final class TikTokService {
     /// Return the engine to the feed the user was on after leaving a profile.
     @MainActor
     func leaveProfile(backTo feed: Feed) {
-        if case .profile = engine.currentFeed { engine.load(feed == .forYou ? .forYou : .following) }
+        if case .profile = engine.currentFeed { engine.load(engineTarget(feed)) }
     }
 
     // MARK: Sign-in lifecycle
@@ -162,7 +189,7 @@ final class TikTokService {
     func signOut() {
         engine.stop()
         session.signOut()
-        forYou = []; following = []; seen = []; error = nil; loading = []
+        forYou = []; following = []; saved = []; liked = []; seen = []; error = nil; loading = []
     }
 
     // MARK: Save to library
@@ -189,7 +216,7 @@ final class TikTokService {
     // MARK: Playable
 
     func cached(playableID: UUID) -> PlayableItem? {
-        (forYou + following).first { $0.playableID == playableID }.map { playable($0) }
+        (forYou + following + saved + liked).first { $0.playableID == playableID }.map { playable($0) }
     }
 
     func playable(_ v: TTVideo, forCar: Bool = false) -> PlayableItem {
