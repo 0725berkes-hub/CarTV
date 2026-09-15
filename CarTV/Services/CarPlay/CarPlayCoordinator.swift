@@ -100,6 +100,7 @@ final class CarPlayCoordinator: NSObject {
     // MARK: Window scene
 
     func attachExternalWindow(_ window: UIWindow) {
+        let reconnecting = playback.current != nil
         externalWindow = window
         carScreenSize = window.bounds.size
         install(in: window)
@@ -107,6 +108,9 @@ final class CarPlayCoordinator: NSObject {
         playback.carIsConnected = true
         // If templates were already the fallback, the window supersedes them.
         templateBuilder = nil
+        // Coming back from a drop (head unit "restricted call", BT hiccup): the video
+        // layer needs re-hosting and the engine is often paused on a stale session.
+        if reconnecting { playback.carReconnected() }
     }
 
     func detachExternalWindow() {

@@ -166,6 +166,8 @@ final class PlaybackController {
         lastSeekTarget = 0
         isFallingBack = false
         lastSavedPosition = 0
+        userPausedExplicitly = false
+        sessionNeedsReload = false
         qualityVariants = []
         snapshot = PlayerSnapshot(state: .loading)
         if origin == .phone { isPhonePlayerPresented = true }
@@ -209,15 +211,98 @@ final class PlaybackController {
 
     func togglePlayPause() {
         switch snapshot.state {
-        case .playing: engine.pause(); persistProgress(force: true)
-        case .paused, .ended: engine.play()
+        case .playing: pause()
+        case .paused, .ended: resume()
         case .failed: retry()
         default: break
         }
     }
 
-    func pause() { engine.pause(); persistProgress(force: true) }
-    func resume() { engine.play() }
+    func pause() { userPausedExplicitly = true; engine.pause(); persistProgress(force: true) }
+    private var userPausedExplicitly = false
+
+    /// Resume with a health check. After a call or a CarPlay reconnect the engine can
+    /// be paused on a dead audio session or a torn-down pipeline: `play()` is accepted
+    /// and nothing happens. Detect that and reload at the current position instead.
+    func resume() {
+        guard let item = current else { return }
+        userPausedExplicitly = false
+        if sessionNeedsReload {
+            sessionNeedsReload = false
+            reloadInPlace(item)
+            return
+        }
+        let before = snapshot.position
+        engine.play()
+        // If the clock hasn't moved in 1.5 s and we're still not playing, the engine is stuck.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard let self, self.current?.id == item.id, !self.isPlaying,
+                  abs(self.snapshot.position - before) < 0.25,
+                  self.snapshot.state != .failed(.unreachable) else { return }
+            Log.player.notice("Resume stalled for \(item.title, privacy: .public); reloading in place")
+            self.reloadInPlace(item)
+        }
+    }
+
+    /// Tear down the engine and reload the same item at the same position, on the
+    /// same surface. Used after audio interruptions and media-services resets.
+    private func reloadInPlace(_ item: PlayableItem) {
+        let at = item.isLive ? nil : (snapshot.position > 2 ? snapshot.position : progress.resumePosition(for: item.ref))
+        Task { @MainActor in
+            guard await AudioSessionController.activate() else {
+                Log.player.error("Audio session won't activate; cannot resume")
+                return
+            }
+            let kind: PlayerEngineKind = (item.streamKind.prefersAVPlayer && !settings.softwareDecoding) ? .avPlayer : .vlc
+            engine.stop()
+            attemptedVLC = false
+            start(on: kind, item: item, startAt: at)
+        }
+    }
+
+    /// CarPlay came back after a disconnect. Re-host the video and, if playback was
+    /// paused by the drop (not by the user), bring it back through the health check.
+    func carReconnected() {
+        videoViewRevision &+= 1
+        guard current != nil else { return }
+        if !isPlaying, !userPausedExplicitly {
+            sessionNeedsReload = true
+            resume()
+        }
+    }
+
+    // MARK: Audio session events
+
+    /// Set when the session was interrupted or reset; the next resume reloads.
+    private var sessionNeedsReload = false
+    private var wasPlayingBeforeInterruption = false
+
+    func handleAudioSession(_ event: AudioSessionController.Event) {
+        switch event {
+        case .interruptionBegan:
+            wasPlayingBeforeInterruption = isPlaying
+            if isPlaying { engine.pause(); persistProgress(force: true) }
+        case .interruptionEnded(let shouldResume):
+            // The session was deactivated under us; a plain play() would run on a dead
+            // session. Reload if the system says resume, otherwise just mark it.
+            sessionNeedsReload = true
+            if shouldResume, wasPlayingBeforeInterruption, current != nil { resume() }
+            wasPlayingBeforeInterruption = false
+        case .mediaServicesReset:
+            // Every AVPlayer/VLC object is invalid now. Reload whatever we had.
+            let wasPlaying = isPlaying
+            sessionNeedsReload = false
+            if let item = current {
+                if wasPlaying { reloadInPlace(item) } else { sessionNeedsReload = true }
+            }
+        case .routeLost:
+            // Output vanished (BT dropped / head unit rebooted). Pause cleanly so the
+            // next play goes through the health-checked resume.
+            if isPlaying { engine.pause(); persistProgress(force: true) }
+            sessionNeedsReload = true
+        }
+    }
 
     func stop() {
         persistProgress(force: true)

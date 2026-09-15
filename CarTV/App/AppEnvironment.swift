@@ -68,7 +68,7 @@ final class AppEnvironment {
     func bootstrap() {
         guard !didBootstrap else { return }
         didBootstrap = true
-        AudioSessionController.configure()
+        AudioSessionController.configure { [playback] event in playback.handleAudioSession(event) }
         playback.attachNowPlaying()
         // Register Siri phrases so "play K24 on CarTV" works on first launch.
         CarTVShortcuts.updateAppShortcutParameters()
