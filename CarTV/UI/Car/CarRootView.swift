@@ -41,7 +41,7 @@ struct CarRootView: View {
         GeometryReader { geo in
             let metrics = CarMetrics(size: geo.size)
             ZStack {
-                CarBackdrop()
+                Theme.ground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     CarTabBar(section: $section, nowPlaying: playback.isActive ? playback.current : nil) {
@@ -152,7 +152,6 @@ struct CarNavHost<Root: View>: View {
         }
         .scrollContentBackground(.hidden)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .background(TransparentHost())
         .environment(\.carPush, CarPush { path.append($0) })
     }
 }
@@ -258,23 +257,3 @@ struct CarFocusButtonStyle: ButtonStyle {
     }
 }
 
-
-/// Walks up from its own UIView and clears the opaque backgrounds UIKit gives
-/// UINavigationController / UIHostingController, so the single CarBackdrop at the
-/// root shows through as one continuous gradient.
-private struct TransparentHost: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let v = UIView(); v.backgroundColor = .clear; v.isUserInteractionEnabled = false
-        DispatchQueue.main.async { clear(from: v) }
-        return v
-    }
-    func updateUIView(_ v: UIView, context: Context) { DispatchQueue.main.async { clear(from: v) } }
-    private func clear(from v: UIView) {
-        var node: UIView? = v
-        var hops = 0
-        while let n = node, hops < 12 {
-            if n.backgroundColor != nil, n.backgroundColor != .clear { n.backgroundColor = .clear }
-            node = n.superview; hops += 1
-        }
-    }
-}

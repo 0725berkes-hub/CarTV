@@ -136,7 +136,7 @@ final class CarPlayCoordinator: NSObject {
                 .modelContainer(env.modelContainer)
         )
         let host = UIHostingController(rootView: root)
-        host.view.backgroundColor = .clear
+        host.view.backgroundColor = UIColor(Theme.ground)
         window.rootViewController = host
         window.tintColor = UIColor(Theme.accent)
         hostingController = host

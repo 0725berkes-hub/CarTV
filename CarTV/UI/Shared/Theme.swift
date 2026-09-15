@@ -164,27 +164,3 @@ struct Monogram: View {
     }
 }
 
-
-/// Deep teal→charcoal atmosphere used behind every car screen (not on the phone).
-/// Adapts to light mode with a soft mint→white wash so text tokens stay legible.
-struct CarBackdrop: View {
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        ZStack {
-            Theme.ground
-            if scheme == .dark {
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.06, green: 0.24, blue: 0.24), location: 0),
-                        .init(color: Color(red: 0.04, green: 0.14, blue: 0.17), location: 0.45),
-                        .init(color: Color(red: 0.02, green: 0.05, blue: 0.08), location: 1)
-                    ],
-                    startPoint: .top, endPoint: .bottom)
-                RadialGradient(colors: [Theme.accent.opacity(0.18), .clear], center: .init(x: 0.5, y: -0.1), startRadius: 0, endRadius: 520)
-            } else {
-                LinearGradient(colors: [Color(red: 0.86, green: 0.95, blue: 0.91), Theme.ground], startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .ignoresSafeArea()
-    }
-}
