@@ -58,8 +58,8 @@ struct CarRootView: View {
                         openPlayer: { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
                     )
                     .padding(.horizontal, metrics.gutter)
-                    .padding(.top, Theme.s2)
-                    .padding(.bottom, Theme.s3)
+                    .padding(.top, Theme.s3)
+                    .padding(.bottom, Theme.s4)
 
                     ZStack {
                         switch section {
@@ -148,10 +148,7 @@ extension EnvironmentValues {
     var carPush: CarPush { get { self[CarPushKey.self] } set { self[CarPushKey.self] = newValue } }
 }
 
-// MARK: - Header (tabs at root, "‹ Title" when drilled in, Now Playing trailing)
-//
-// Built from system button styles only (.glass / .glassProminent) so it matches
-// what UIKit draws for its own Liquid Glass controls on this display.
+// MARK: - Header: a plain segmented tab bar, centered. "‹ Title" replaces it when drilled in.
 
 struct CarHeader: View {
     @Environment(PlaybackController.self) private var playback
@@ -162,62 +159,58 @@ struct CarHeader: View {
     let back: () -> Void
     let openPlayer: () -> Void
 
+    private var h: CGFloat { m.compact ? 40 : 48 }
+    private var font: Font { .system(size: m.compact ? 15 : 19, weight: .semibold) }
+
     var body: some View {
-        HStack(spacing: Theme.s3) {
+        ZStack {
+            // Centered segment (or back pill)
             if let route {
-                Button(action: back) {
-                    Label(route.title, systemImage: "chevron.left")
-                        .font(.system(size: m.compact ? 15 : 18, weight: .semibold))
-                        .lineLimit(1)
-                        .padding(.horizontal, m.compact ? 4 : 8)
-                        .frame(height: m.headerHeight - 12)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-                .controlSize(m.compact ? .regular : .large)
-                .accessibilityLabel("Back")
-            } else {
-                GlassEffectContainer(spacing: 6) {
-                    HStack(spacing: 6) {
-                        ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
-                            let selected = section == s
-                            Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
-                                Group {
-                                    if selected || !m.compact {
-                                        Label(s.title, systemImage: s.symbol)
-                                    } else {
-                                        Image(systemName: s.symbol).accessibilityLabel(Text(s.title))
-                                    }
-                                }
-                                .font(.system(size: m.compact ? 13 : 15, weight: .semibold))
-                                    .padding(.horizontal, m.compact ? 2 : 6)
-                                    .frame(height: m.headerHeight - 12)
-                            }
-                            .buttonStyle(selected ? AnyPrimitiveButtonStyle(.glassProminent) : AnyPrimitiveButtonStyle(.glass))
-                            .buttonBorderShape(.capsule)
-                            .tint(selected ? Theme.accent : nil)
-                            .foregroundStyle(selected ? Color.black : Theme.ink)
-                            .controlSize(m.compact ? .regular : .large)
+                HStack {
+                    Button(action: back) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.left").font(font.weight(.bold))
+                            Text(route.title).font(font).lineLimit(1)
                         }
+                        .foregroundStyle(Theme.ink)
+                        .padding(.leading, 14).padding(.trailing, 20)
+                        .frame(height: h)
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
+                        let selected = section == s
+                        Button { withAnimation(.snappy(duration: 0.25, extraBounce: 0.05)) { section = s } } label: {
+                            Text(s.title)
+                                .font(font)
+                                .foregroundStyle(selected ? Color.black : Theme.ink)
+                                .padding(.horizontal, m.compact ? 18 : 28)
+                                .frame(height: h)
+                                .background {
+                                    if selected { Capsule().fill(Theme.accent).matchedGeometryEffect(id: "seg", in: ns) }
+                                }
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
+                .glassEffect(.regular.interactive(), in: Capsule())
             }
 
-            Spacer(minLength: 0)
-
+            // Now Playing pinned right
             if let item = nowPlaying {
-                CarNowPlayingPill(item: item, open: openPlayer)
+                HStack { Spacer(); CarNowPlayingPill(item: item, open: openPlayer) }
             }
         }
-        .frame(height: m.headerHeight)
+        .frame(height: h)
     }
-}
 
-/// Type-erases a PrimitiveButtonStyle so `.glass` / `.glassProminent` can be chosen at runtime.
-struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
-    private let make: (Configuration) -> AnyView
-    init<S: PrimitiveButtonStyle>(_ style: S) { make = { AnyView(style.makeBody(configuration: $0)) } }
-    func makeBody(configuration: Configuration) -> some View { make(configuration) }
+    @Namespace private var ns
 }
 
 /// Now Playing chip: circular artwork with an accent ring, title/state, play/pause, stop.
