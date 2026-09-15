@@ -36,7 +36,11 @@ final class YouTubeService {
 
     // MARK: Feeds
 
-    enum Feed: Hashable { case home, subscriptions, trending, watchLater, liked, history, library, playlist(String), channel(String, tab: ChannelTab) }
+    enum Feed: Hashable { case home, explore, subscriptions, watchLater, liked, history, library, playlist(String), channel(String, tab: ChannelTab) }
+
+    /// Signed-out Home is intentionally empty on YouTube; Explore stitches popular
+    /// categories together so the tab is never blank.
+    static let exploreTopics = ["Music", "Gaming", "News", "Sports", "Movies trailers", "Comedy", "Technology", "Cooking", "Travel vlog", "Kurdish music"]
     enum ChannelTab: String, Hashable, CaseIterable { case videos, live, playlists }
 
     func fetch(_ feed: Feed, continuation: String? = nil) async throws -> YTPage {
@@ -45,9 +49,29 @@ final class YouTubeService {
         let token = await auth.token()
         let json: JSONObject
         switch feed {
-        case .home:           json = try await api.browse("FEwhat_to_watch", continuation: continuation, accessToken: token)
+        case .home:
+            guard token != nil else { return try await fetch(.explore, continuation: continuation) }
+            json = try await api.browse("FEwhat_to_watch", continuation: continuation, accessToken: token)
+        case .explore:
+            // One search per topic, in parallel → one shelf each. No continuation.
+            if continuation != nil { return YTPage(shelves: [], continuation: nil) }
+            var shelves: [YTShelf] = []
+            try await withThrowingTaskGroup(of: (Int, YTShelf?).self) { group in
+                for (i, topic) in Self.exploreTopics.enumerated() {
+                    group.addTask { [api] in
+                        let j = try? await api.search(topic, params: "EgIQAQ%3D%3D")   // videos only
+                        let items = j.map { YTParser.collectItems($0) }?.prefix(8).map { $0 } ?? []
+                        return (i, items.isEmpty ? nil : YTShelf(title: topic, items: items))
+                    }
+                }
+                var ordered: [(Int, YTShelf)] = []
+                for try await (i, shelf) in group { if let shelf { ordered.append((i, shelf)) } }
+                shelves = ordered.sorted { $0.0 < $1.0 }.map(\.1)
+            }
+            let page = YTPage(shelves: shelves, continuation: nil)
+            pageCache[key] = (page, Date())
+            return page
         case .subscriptions:  guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("FEsubscriptions", continuation: continuation, accessToken: token)
-        case .trending:       json = try await api.browse("FEtrending", continuation: continuation, accessToken: token)
         case .watchLater:     guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("VLWL", continuation: continuation, accessToken: token)
         case .liked:          guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("VLLL", continuation: continuation, accessToken: token)
         case .history:        guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("FEhistory", continuation: continuation, accessToken: token)

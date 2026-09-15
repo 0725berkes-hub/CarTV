@@ -54,7 +54,10 @@ struct CarYouTubeView: View {
         }
         .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)") {
             page = nil; error = nil
-            do { page = try await env.youtube.fetch(feed) } catch { self.error = error.localizedDescription }
+            do {
+                let p = try await env.youtube.fetch(feed)
+                if p.flatItems.isEmpty { error = String(localized: "Nothing here yet. Sign in on your iPhone for your feed.") } else { page = p }
+            } catch { self.error = error.localizedDescription }
         }
     }
 }

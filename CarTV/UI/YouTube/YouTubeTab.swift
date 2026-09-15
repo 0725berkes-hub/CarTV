@@ -80,9 +80,23 @@ struct YTFeedView: View {
             if let page {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.s5) {
+                        if case .home = feed, !env.youtube.auth.isSignedIn {
+                            YTSignInBanner().padding(.horizontal, Theme.s4)
+                        }
                         ForEach(page.shelves) { shelf in
-                            if let t = shelf.title { ShelfHeader(title: LocalizedStringResource(stringLiteral: t)) }
-                            YTItemGrid(items: shelf.items, queueSource: page.flatItems)
+                            if let t = shelf.title {
+                                ShelfHeader(title: LocalizedStringResource(stringLiteral: t))
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    LazyHStack(alignment: .top, spacing: Theme.s3) {
+                                        ForEach(shelf.items) { item in
+                                            if case .video(let v) = item { YTVideoCard(video: v, queue: shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }).frame(width: 260) }
+                                        }
+                                    }
+                                    .padding(.horizontal, Theme.s4)
+                                }
+                            } else {
+                                YTItemGrid(items: shelf.items, queueSource: page.flatItems)
+                            }
                         }
                         if page.continuation != nil {
                             ProgressView().frame(maxWidth: .infinity).padding().task { await loadMore() }
@@ -298,5 +312,27 @@ struct YTSkeletonFeed: View {
             .padding(Theme.s4)
         }
         .redacted(reason: .placeholder)
+    }
+}
+
+
+struct YTSignInBanner: View {
+    @State private var show = false
+    var body: some View {
+        Button { show = true } label: {
+            HStack(spacing: Theme.s3) {
+                Image(systemName: "person.crop.circle.badge.plus").font(.title2).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sign in for your recommendations").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                    Text("Subscriptions, history, playlists and a Home feed that's yours.").font(.footnote).foregroundStyle(Theme.inkMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.bold)).foregroundStyle(Theme.inkFaint)
+            }
+            .padding(Theme.s3)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $show) { YTAccountSheet() }
     }
 }
