@@ -46,12 +46,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     // MARK: PlayerEngine
 
+    private var knownDuration: TimeInterval = 0
+
     func load(_ playable: PlayableItem, startAt: TimeInterval?, options: PlayerOptions) {
         tearDownItem()
         generation &+= 1
         let gen = generation
         hasEverPlayed = false
         userPaused = false
+        knownDuration = playable.isLive ? 0 : playable.duration
         snapshot = PlayerSnapshot(state: .loading)
 
         var headers = playable.headers
@@ -178,7 +181,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func seek(to seconds: TimeInterval) {
         guard snapshot.isSeekable else { return }
         let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tol, toleranceAfter: tol)
+        let wasPlaying = !userPaused
+        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tol, toleranceAfter: tol) { @Sendable [weak self] finished in
+            onMain {
+                guard let self, finished, wasPlaying else { return }
+                // Landing far outside the buffered range can leave the player at rate 0.
+                if self.player.timeControlStatus != .playing { self.player.play() }
+            }
+        }
+        var s = snapshot; s.position = seconds; s.state = .buffering; snapshot = s
     }
 
     func setRate(_ rate: Float) { player.rate = rate }
@@ -232,6 +243,10 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         let dur = item.duration
         s.duration = (dur.isIndefinite || !dur.seconds.isFinite) ? 0 : dur.seconds
         let seekableWindow = item.seekableTimeRanges.last?.timeRangeValue.duration.seconds ?? 0
+        // VOD with a known length is seekable from the first tick — the whole
+        // timeline, not just what has buffered (HLS byte-range VOD reports the
+        // full duration up front; AVPlayer fetches the target on seek).
+        if s.duration == 0, knownDuration > 0 { s.duration = knownDuration }
         s.isSeekable = s.duration > 0 || seekableWindow > 30
         if s.videoSize == .zero, item.presentationSize != .zero { s.videoSize = item.presentationSize }
         snapshot = s
@@ -261,12 +276,12 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             s.state = .playing
             if s.videoSize == .zero { s.videoSize = item.presentationSize }
         case .paused:
-            // Before the first frame, "paused" just means not started yet. If the item
-            // is ready and we asked to play but the rate is 0, the player stopped itself
-            // (typical for live HLS after the first frame) — kick it again.
-            if !hasEverPlayed, item.status == .readyToPlay, player.rate == 0, !userPaused {
+            // "Paused" without the user asking for it means the player stopped itself:
+            // not started yet, or it gave up after a seek/stall (with automatic stall
+            // waiting off it just sits at rate 0). Kick it again either way.
+            if item.status == .readyToPlay, player.rate == 0, !userPaused, snapshot.state != .ended {
                 player.play()
-                s.state = .loading
+                s.state = hasEverPlayed ? .buffering : .loading
             } else {
                 s.state = hasEverPlayed ? .paused : .loading
             }

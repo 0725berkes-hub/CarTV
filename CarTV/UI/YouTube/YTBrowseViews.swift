@@ -199,7 +199,7 @@ struct YTLibraryView: View {
                     .padding(.horizontal, Theme.s4)
 
                     ShelfHeader(title: "Playlists")
-                    YTFeedView(feed: .library).frame(minHeight: 200)
+                    YTFeedView(feed: .playlists).frame(minHeight: 200)
                 }
                 .padding(.vertical, Theme.s2)
             }

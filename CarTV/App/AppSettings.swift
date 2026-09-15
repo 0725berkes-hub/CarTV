@@ -59,6 +59,14 @@ final class AppSettings {
     var mytvEnabled: Bool {
         didSet { defaults.set(mytvEnabled, forKey: Keys.mytv) }
     }
+    /// Folder YouTube downloads land in. nil = ask (or the only folder, if there is one).
+    var downloadFolderID: UUID? {
+        didSet { defaults.set(downloadFolderID?.uuidString, forKey: Keys.downloadFolder) }
+    }
+    /// Optional RapidAPI key for the "youtube-media-downloader" fallback source.
+    var rapidAPIKey: String? {
+        didSet { defaults.set(rapidAPIKey?.nilIfEmpty, forKey: Keys.rapidAPIKey) }
+    }
 
     init() {
         appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
@@ -69,6 +77,8 @@ final class AppSettings {
         languageOverride = defaults.string(forKey: Keys.language)
         subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
         mytvEnabled = defaults.bool(forKey: Keys.mytv)
+        downloadFolderID = defaults.string(forKey: Keys.downloadFolder).flatMap(UUID.init)
+        rapidAPIKey = defaults.string(forKey: Keys.rapidAPIKey)
     }
 
     /// Re-read every value after the defaults domain was wiped (Clear All Data).
@@ -83,6 +93,8 @@ final class AppSettings {
         languageOverride = defaults.string(forKey: Keys.language)
         subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
         mytvEnabled = defaults.bool(forKey: Keys.mytv)
+        downloadFolderID = defaults.string(forKey: Keys.downloadFolder).flatMap(UUID.init)
+        rapidAPIKey = defaults.string(forKey: Keys.rapidAPIKey)
     }
 
     private enum Keys {
@@ -94,5 +106,7 @@ final class AppSettings {
         static let language = "settings.language"
         static let subtitleLanguage = "settings.subtitleLanguage"
         static let mytv = "settings.mytvEnabled"
+        static let downloadFolder = "settings.downloadFolderID"
+        static let rapidAPIKey = "settings.rapidAPIKey"
     }
 }

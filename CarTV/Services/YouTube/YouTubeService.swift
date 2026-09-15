@@ -39,7 +39,7 @@ final class YouTubeService {
 
     // MARK: Feeds
 
-    enum Feed: Hashable { case home, explore, subscriptions, watchLater, liked, history, library, playlist(String), channel(String, tab: ChannelTab) }
+    enum Feed: Hashable { case home, explore, subscriptions, watchLater, liked, history, library, playlists, playlist(String), channel(String, tab: ChannelTab) }
 
     /// Signed-out Home is intentionally empty on YouTube; Explore stitches popular
     /// categories together so the tab is never blank.
@@ -88,6 +88,15 @@ final class YouTubeService {
         case .liked:          guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("VLLL", continuation: continuation, accessToken: token)
         case .history:        guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("FEhistory", continuation: continuation, accessToken: token)
         case .library:        guard token != nil else { throw YTError.signInRequired }; json = try await api.browse("FElibrary", continuation: continuation, accessToken: token)
+        case .playlists:
+            guard token != nil else { throw YTError.signInRequired }
+            json = try await api.browse("FEplaylist_aggregation", continuation: continuation, accessToken: token)
+            var page = YTParser.page(json)
+            page.shelves = page.shelves.map { shelf in
+                var s = shelf; s.items = s.items.filter { if case .playlist = $0 { return true } else { return false } }; return s
+            }.filter { !$0.items.isEmpty }
+            if continuation == nil { pageCache[key] = (page, Date()) }
+            return page
         case .playlist(let id): json = try await api.browse("VL" + id.replacingOccurrences(of: "VL", with: ""), continuation: continuation, accessToken: token)
         case .channel(let id, let tab):
             let params: String? = switch tab { case .videos: "EgZ2aWRlb3PyBgQKAjoA"; case .live: "EgdzdHJlYW1z8gYECgJ6AA%3D%3D"; case .playlists: "EglwbGF5bGlzdHPyBgQKAkIA" }

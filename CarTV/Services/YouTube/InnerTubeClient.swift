@@ -186,7 +186,16 @@ nonisolated final class InnerTubeClient: Sendable {
             body["browseId"] = browseId
             if let params { body["params"] = params }
         }
-        return try await call("browse", client: browsingClient(accessToken), body: body, accessToken: accessToken)
+        do {
+            return try await call("browse", client: browsingClient(accessToken), body: body, accessToken: accessToken)
+        } catch YTError.network(let msg) where msg == "HTTP 400" && accessToken != nil {
+            // TVHTML5 rejects WEB-shaped params/continuations. Public content (channels,
+            // playlists) reads fine anonymously as WEB; personal feeds need the token.
+            let personal = browseId.hasPrefix("FE") || browseId == "VLWL" || browseId == "VLLL"
+            guard !personal else { throw YTError.network(msg) }
+            Log.network.notice("YT browse \(browseId, privacy: .public) 400 on TV client → retrying anonymously as WEB")
+            return try await call("browse", client: Self.web, body: body, accessToken: nil)
+        }
     }
 
     func search(_ query: String, params: String? = nil, continuation: String? = nil, accessToken: String? = nil) async throws -> JSONObject {
