@@ -1,37 +1,32 @@
 import SwiftUI
 import UIKit
 
-/// Hosts the engine's primary video view (the car when connected, else the phone).
-/// Re-parents the same UIView so switching surfaces never rebuilds the decoder.
-struct VideoSurface: UIViewRepresentable {
-    @Environment(PlaybackController.self) private var playback
-
-    func makeUIView(context: Context) -> VideoSurfaceContainer {
-        let container = VideoSurfaceContainer()
-        container.host(playback.videoView)
-        return container
-    }
-
-    func updateUIView(_ container: VideoSurfaceContainer, context: Context) {
-        if container.hosted !== playback.videoView { container.host(playback.videoView) }
-    }
-}
-
-/// Phone-side surface. When the car owns the primary view, AVPlayer gives us a
-/// mirror layer; VLC can't, so we show the artwork "playing on car" card.
-struct PhoneVideoSurface: View {
+/// Car-side surface. AVPlayer: always the primary view. VLC: only while the phone
+/// player is closed (one drawable); otherwise shows artwork + "Playing on iPhone".
+struct VideoSurface: View {
     @Environment(PlaybackController.self) private var playback
 
     var body: some View {
-        if let view = playback.phoneVideoView() {
-            PhoneMirrorSurface(view: view, key: "\(playback.videoViewRevision)-\(playback.carIsConnected)")
+        if let view = playback.carVideoView() {
+            HostedVideoView(view: view, key: "car-\(playback.videoViewRevision)")
         } else {
-            PlayingOnCarCard(item: playback.current)
+            YieldedSurfaceCard(item: playback.current, text: "Playing on iPhone")
         }
     }
 }
 
-private struct PhoneMirrorSurface: UIViewRepresentable {
+/// Phone-side surface. Always renders video (AVPlayer mirror, or the single VLC drawable).
+struct PhoneVideoSurface: View {
+    @Environment(PlaybackController.self) private var playback
+
+    var body: some View {
+        HostedVideoView(view: playback.phoneVideoView(), key: "phone-\(playback.videoViewRevision)-\(playback.carIsConnected)")
+    }
+}
+
+/// Re-parents a UIKit view. The same UIView can be hosted by only one container at a
+/// time; hosting it here removes it from wherever it was.
+private struct HostedVideoView: UIViewRepresentable {
     let view: UIView
     let key: String
     func makeUIView(context: Context) -> VideoSurfaceContainer {
@@ -40,25 +35,26 @@ private struct PhoneMirrorSurface: UIViewRepresentable {
     func updateUIView(_ c: VideoSurfaceContainer, context: Context) {
         if c.key != key || c.hosted !== view { c.host(view); c.key = key }
     }
+    static func dismantleUIView(_ c: VideoSurfaceContainer, coordinator: ()) {
+        // Give the drawable back so the other surface can pick it up.
+        c.hosted?.removeFromSuperview()
+    }
 }
 
-struct PlayingOnCarCard: View {
+struct YieldedSurfaceCard: View {
     let item: PlayableItem?
+    let text: LocalizedStringResource
     var body: some View {
         ZStack {
             if let item { TileTint.gradient(for: item.title).opacity(0.5) }
-            VStack(spacing: Theme.s4) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous).fill(Theme.surface).frame(width: 160, height: 160)
-                    if let item {
-                        RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 320, height: 320), contentMode: .fit) {
-                            Monogram(text: item.title, size: 48)
-                        }.padding(Theme.s4).frame(width: 160, height: 160)
+            VStack(spacing: Theme.s3) {
+                if let item {
+                    RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 320, height: 320), contentMode: .fit) {
+                        Monogram(text: item.title, size: 40)
                     }
+                    .frame(width: 140, height: 140)
                 }
-                Label("Playing on your car screen", systemImage: "car.fill")
-                    .font(Theme.Font.headline).foregroundStyle(Theme.ink)
-                Text("Controls here work too.").font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                Label(text, systemImage: "iphone").font(Theme.Font.headline).foregroundStyle(Theme.ink)
             }
         }
     }
@@ -76,7 +72,7 @@ final class VideoSurfaceContainer: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     func host(_ view: UIView) {
-        if hosted === view { return }
+        if hosted === view, view.superview === self { return }
         hosted?.removeFromSuperview()
         view.removeFromSuperview()
         view.translatesAutoresizingMaskIntoConstraints = false

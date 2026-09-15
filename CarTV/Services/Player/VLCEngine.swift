@@ -106,6 +106,7 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
         }
     }
 
+    var makeMirrorViewSupported: Bool { false }
     func makeMirrorView() -> UIView? { nil }
 
     func play() { player?.play() }

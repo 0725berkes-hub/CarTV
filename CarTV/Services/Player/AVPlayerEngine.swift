@@ -138,6 +138,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func play() { userPaused = false; player.play() }
     func pause() { userPaused = true; player.pause() }
 
+    var makeMirrorViewSupported: Bool { true }
+
     func makeMirrorView() -> UIView? {
         let v = PlayerLayerView()
         v.playerLayer.player = player

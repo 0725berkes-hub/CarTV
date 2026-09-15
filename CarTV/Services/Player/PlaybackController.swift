@@ -41,14 +41,19 @@ final class PlaybackController {
 
     var videoView: UIView { engine.videoView }
 
-    /// Which surface owns the primary (only) VLC drawable. The car wins when connected.
-    var primarySurfaceIsCar: Bool { carIsConnected }
-
-    /// Phone-side view. When the car is connected, AVPlayer mirrors into a second
-    /// layer; VLC can't, so the phone shows artwork instead (see `PhoneVideoSurface`).
-    func phoneVideoView() -> UIView? {
+    /// Phone-side render view.
+    /// - AVPlayer: a second layer mirroring the same player (both screens show video).
+    /// - VLC: one drawable only, so it follows attention — the phone gets it while the
+    ///   full-screen phone player is open; the car gets it otherwise. Never a placeholder.
+    func phoneVideoView() -> UIView {
         if !carIsConnected { return engine.videoView }
-        return engine.makeMirrorView()
+        return engine.makeMirrorView() ?? engine.videoView
+    }
+
+    /// Car-side render view. For VLC, yields to the phone while the phone player is open.
+    func carVideoView() -> UIView? {
+        if engine.makeMirrorViewSupported { return engine.videoView }
+        return isPhonePlayerPresented ? nil : engine.videoView
     }
 
     // MARK: Dependencies

@@ -24,7 +24,7 @@ struct CarPlayerView: View {
             Color.black.ignoresSafeArea()
 
             if car.supportsVideoPlayback {
-                VideoSurface().id(playback.videoViewRevision).ignoresSafeArea()
+                VideoSurface().id("\(playback.videoViewRevision)-\(playback.isPhonePlayerPresented)").ignoresSafeArea()
             } else {
                 AudioOnlyStage(item: playback.current)
             }
@@ -126,14 +126,11 @@ struct CarPlayerView: View {
 
                 Spacer(minLength: 0)
 
-                // Bottom: a slim scrubber for VOD, a small live pill for channels.
-                Group {
-                    if playback.snapshot.duration > 0 {
-                        CarScrubber(onScrubStart: { hideTask?.cancel() }, onScrubEnd: { scheduleHide() })
-                    }
-                    }
+                // Bottom: scrubber for VOD only (live channels show nothing here).
+                if playback.snapshot.duration > 0 {
+                    CarScrubber(onScrubStart: { hideTask?.cancel() }, onScrubEnd: { scheduleHide() })
+                        .padding(.horizontal, m.gutter).padding(.bottom, m.compact ? Theme.s2 : Theme.s3)
                 }
-                .padding(.horizontal, m.gutter).padding(.bottom, m.compact ? Theme.s2 : Theme.s3)
             }
         }
         // The controls layer owns every touch inside it. A tap on empty space here

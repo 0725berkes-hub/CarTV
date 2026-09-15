@@ -68,6 +68,8 @@ protocol PlayerEngine: AnyObject {
     /// A secondary view mirroring the same playback, or nil if the engine can
     /// only render to one surface (VLC). AVPlayer supports any number of layers.
     func makeMirrorView() -> UIView?
+    /// True when `makeMirrorView()` returns a live mirror (AVPlayer), false for single-drawable engines.
+    var makeMirrorViewSupported: Bool { get }
 
     func load(_ item: PlayableItem, startAt: TimeInterval?, options: PlayerOptions)
     func play()
