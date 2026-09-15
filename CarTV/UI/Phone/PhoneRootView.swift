@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PhoneTab: Hashable { case home, favorites, youtube, cast, library }
+enum PhoneTab: Hashable { case home, favorites, youtube, library }
 
 struct PhoneRootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -12,12 +12,12 @@ struct PhoneRootView: View {
     @State private var showOnboarding = false
     @State private var importBanner: ImportBanner?
     @State private var playerShown = false
-    @State private var showSettings = false
+    @State private var moreSheet: MoreSheet?
 
     var body: some View {
-        // Five tabs: Home, Favorites, YouTube, Cast, Library. iOS shows a "More" tab
-        // past five, so Settings is a sheet from the toolbar instead — it's a place
-        // you visit, not a place you live.
+        // Four tabs you live in. Cast and Settings are tools you visit, so they're a
+        // menu on every tab's toolbar that opens a sheet — the iOS "More" tab would
+        // otherwise appear past five tabs with its own list screen.
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house.fill", value: .home) {
                 HomeView(showAddSource: $showAddSource)
@@ -28,21 +28,23 @@ struct PhoneRootView: View {
             Tab("YouTube", systemImage: "play.rectangle.fill", value: .youtube) {
                 YouTubeTab()
             }
-            Tab("Cast", systemImage: "tv.badge.wifi", value: .cast) {
-                CastView()
-            }
             Tab("Library", systemImage: "square.stack.fill", value: .library) {
                 LibraryView(showAddSource: $showAddSource)
             }
         }
-        .environment(\.openSettings, OpenSettingsAction { showSettings = true })
+        .environment(\.openMore, OpenMoreAction { moreSheet = $0 })
         .tabViewBottomAccessory(isEnabled: playback.isActive) {
             MiniPlayerBar()
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+        .sheet(item: $moreSheet) { which in
+            Group {
+                switch which {
+                case .cast:     CastView()
+                case .settings: SettingsView()
+                }
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         // iOS 26 shrinks the tab bar into a compact glass pill when a list scrolls
         // under it — reads as a stuck half-sheet on a TV app. Keep it full-size.
@@ -121,23 +123,33 @@ struct BannerView: View {
     }
 }
 
-// MARK: - Settings presentation
+// MARK: - More (Cast, Settings)
 
-/// Any tab's toolbar can open Settings as a sheet without knowing about the root.
-struct OpenSettingsAction {
-    let run: () -> Void
-    func callAsFunction() { run() }
+enum MoreSheet: String, Identifiable { case cast, settings; var id: String { rawValue } }
+
+/// Any tab's toolbar can open Cast or Settings as a sheet without knowing about the root.
+struct OpenMoreAction {
+    let run: (MoreSheet) -> Void
+    func callAsFunction(_ which: MoreSheet) { run(which) }
 }
-private struct OpenSettingsKey: EnvironmentKey { static let defaultValue = OpenSettingsAction { } }
+private struct OpenMoreKey: EnvironmentKey { static let defaultValue = OpenMoreAction { _ in } }
 extension EnvironmentValues {
-    var openSettings: OpenSettingsAction { get { self[OpenSettingsKey.self] } set { self[OpenSettingsKey.self] = newValue } }
+    var openMore: OpenMoreAction { get { self[OpenMoreKey.self] } set { self[OpenMoreKey.self] = newValue } }
 }
 
-/// The gear that lives at the top-leading of every tab.
-struct SettingsToolbarButton: View {
-    @Environment(\.openSettings) private var openSettings
+/// Native `Menu` at the top-leading of every tab: Cast to Car, Settings.
+struct MoreToolbarMenu: View {
+    @Environment(\.openMore) private var openMore
+    @Environment(PlaybackController.self) private var playback
     var body: some View {
-        Button { openSettings() } label: { Image(systemName: "gearshape") }
-            .accessibilityLabel("Settings")
+        Menu {
+            Button { openMore(.cast) } label: {
+                Label(playback.carIsConnected ? "Cast to Car" : "Cast", systemImage: "tv.badge.wifi")
+            }
+            Button { openMore(.settings) } label: { Label("Settings", systemImage: "gearshape") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
     }
 }

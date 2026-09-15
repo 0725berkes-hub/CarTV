@@ -41,7 +41,7 @@ struct YouTubeTab: View {
             .navigationTitle("YouTube")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() }
+                ToolbarItem(placement: .topBarLeading) { MoreToolbarMenu() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSignIn = true } label: {
                         if let url = env.youtube.auth.accountAvatarURL {

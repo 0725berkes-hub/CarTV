@@ -36,7 +36,7 @@ struct LibraryView: View {
             .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() }
+                ToolbarItem(placement: .topBarLeading) { MoreToolbarMenu() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showAddSource = true } label: { Label("Add Playlist", systemImage: "link.badge.plus") }

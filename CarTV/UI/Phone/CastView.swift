@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct CastView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
+    @Environment(\.dismiss) private var dismiss
 
     @State private var linkText = ""
     @State private var linkError: String?
@@ -31,7 +32,8 @@ struct CastView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
             .navigationTitle("Cast")
-            .toolbar { ToolbarItem(placement: .topBarLeading) { SettingsToolbarButton() } }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: false) { result in
                 if case .success(let urls) = result, let url = urls.first { castFile(url) }
             }
