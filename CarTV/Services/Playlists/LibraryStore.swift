@@ -162,6 +162,28 @@ final class LibraryStore {
         save()
     }
 
+    /// Batch operations for multi-select. One save at the end, one revision bump.
+
+    func delete(_ videos: [LocalVideo], removeFile: Bool = true) {
+        let ids = Set(videos.map(\.id))
+        if removeFile {
+            for v in videos {
+                try? FileManager.default.removeItem(at: v.fileURL)
+                if let t = v.thumbnailURL { try? FileManager.default.removeItem(at: t) }
+            }
+        }
+        try? context.delete(model: Favorite.self, where: #Predicate { ids.contains($0.targetID) })
+        try? context.delete(model: WatchProgress.self, where: #Predicate { ids.contains($0.targetID) })
+        for v in videos { context.delete(v) }
+        save()
+    }
+
+    /// nil folder = move to the loose "Videos" bucket.
+    func move(_ videos: [LocalVideo], to folder: VideoFolder?) {
+        for v in videos { v.folder = folder }
+        save()
+    }
+
     func delete(_ video: LocalVideo, removeFile: Bool = true) {
         let vid = video.id
         if removeFile {

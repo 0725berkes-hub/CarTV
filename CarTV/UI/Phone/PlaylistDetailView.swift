@@ -126,6 +126,14 @@ struct LocalVideosGridView: View {
     @State private var query = ""
     @State private var sort: Sort = .newest
 
+    // Multi-select
+    @State private var selecting = false
+    @State private var selection: Set<UUID> = []
+    @State private var confirmDelete = false
+    @State private var showMove = false
+    @State private var newFolderName = ""
+    @State private var showNewFolder = false
+
     enum Sort: String, CaseIterable, Identifiable {
         case newest, name, duration
         var id: String { rawValue }
@@ -154,6 +162,8 @@ struct LocalVideosGridView: View {
         }.map { ($0, groups[$0]!) }
     }
 
+    private var selectedVideos: [LocalVideo] { videos.filter { selection.contains($0.id) } }
+
     var body: some View {
         let list = sorted
         let items = list.map(PlayableItem.init(video:))
@@ -165,15 +175,31 @@ struct LocalVideosGridView: View {
                         LazyVGrid(columns: cols, spacing: Theme.s3) {
                             ForEach(group.videos) { video in
                                 let item = PlayableItem(video: video)
-                                Button { playback.play(item, queue: items, origin: .phone) } label: {
+                                let picked = selection.contains(video.id)
+                                Button {
+                                    if selecting { toggle(video) } else { playback.play(item, queue: items, origin: .phone, resume: true) }
+                                } label: {
                                     ItemCell(item: item)
+                                        .overlay(alignment: .topLeading) { if selecting { SelectionBadge(on: picked).padding(8) } }
+                                        .opacity(selecting && !picked ? 0.72 : 1)
+                                        .overlay {
+                                            if picked {
+                                                RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous)
+                                                    .strokeBorder(Theme.accent, lineWidth: 2.5)
+                                                    .frame(maxHeight: .infinity, alignment: .top)
+                                            }
+                                        }
                                 }
                                 .buttonStyle(.plain)
+                                .animation(.easeOut(duration: 0.15), value: picked)
                                 .contextMenu {
-                                    ItemContextMenu(item: item)
-                                    Divider()
-                                    Button { renameText = video.title; renaming = video } label: { Label("Rename", systemImage: "pencil") }
-                                    Button(role: .destructive) { env.library.delete(video) } label: { Label("Delete", systemImage: "trash") }
+                                    if !selecting {
+                                        ItemContextMenu(item: item)
+                                        Divider()
+                                        Button { selecting = true; selection = [video.id] } label: { Label("Select", systemImage: "checkmark.circle") }
+                                        Button { renameText = video.title; renaming = video } label: { Label("Rename", systemImage: "pencil") }
+                                        Button(role: .destructive) { env.library.delete(video) } label: { Label("Delete", systemImage: "trash") }
+                                    }
                                 }
                             }
                         }
@@ -189,13 +215,61 @@ struct LocalVideosGridView: View {
                 }
             }
             .padding(.top, Theme.s2)
-            .padding(.bottom, Theme.s10)
+            .padding(.bottom, selecting ? Theme.s10 + 56 : Theme.s10)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .navigationTitle(title)
-        .navigationSubtitle(Text("\(videos.count) videos"))
+        .navigationTitle(selecting ? (selection.isEmpty ? String(localized: "Select Videos") : String(localized: "\(selection.count) Selected")) : title)
+        .navigationSubtitle(selecting ? Text("") : Text("\(videos.count) videos"))
+        .navigationBarBackButtonHidden(selecting)
         .searchable(text: $query, prompt: Text("Find a video"))
-        .toolbar {
+        .toolbar { toolbarContent(items: items, visible: list) }
+        .safeAreaInset(edge: .bottom) { if selecting { selectionBar } }
+        .overlay { if list.isEmpty { EmptyState(symbol: "film", title: query.isEmpty ? "No videos in that folder" : "No matches") } }
+        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $renameText)
+            Button("Save") { if let v = renaming { env.library.rename(v, to: renameText) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
+        .confirmationDialog(
+            selection.count == 1 ? "Delete this video?" : "Delete \(selection.count) videos?",
+            isPresented: $confirmDelete, titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                env.library.delete(selectedVideos)
+                endSelecting()
+            }
+        } message: { Text("The files are removed from this iPhone.") }
+        .confirmationDialog("Move to", isPresented: $showMove, titleVisibility: .visible) {
+            ForEach(env.library.folders()) { f in
+                Button(f.name) { env.library.move(selectedVideos, to: f); endSelecting() }
+            }
+            Button("Videos (no folder)") { env.library.move(selectedVideos, to: nil); endSelecting() }
+            Button("New Folder…") { showNewFolder = true }
+        }
+        .alert("New Folder", isPresented: $showNewFolder) {
+            TextField("Name", text: $newFolderName)
+            Button("Create & Move") {
+                let f = env.library.createFolder(named: newFolderName)
+                env.library.move(selectedVideos, to: f)
+                newFolderName = ""
+                endSelecting()
+            }.disabled(newFolderName.trimmed.isEmpty)
+            Button("Cancel", role: .cancel) { newFolderName = "" }
+        }
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private func toolbarContent(items: [PlayableItem], visible: [LocalVideo]) -> some ToolbarContent {
+        if selecting {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(selection.count == visible.count ? "Deselect All" : "Select All") {
+                    selection = selection.count == visible.count ? [] : Set(visible.map(\.id))
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) { Button("Done") { endSelecting() } }
+        } else {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { playback.playRandom(from: items, origin: .phone) } label: { Image(systemName: "shuffle") }
                     .disabled(items.isEmpty)
@@ -203,15 +277,77 @@ struct LocalVideosGridView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { selecting = true } label: { Label("Select", systemImage: "checkmark.circle") }
+                    Divider()
                     Picker("Sort", selection: $sort) { ForEach(Sort.allCases) { Text($0.title).tag($0) } }
-                } label: { Image(systemName: "arrow.up.arrow.down") }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .disabled(items.isEmpty)
             }
         }
-        .overlay { if list.isEmpty { EmptyState(symbol: "film", title: query.isEmpty ? "No videos in that folder" : "No matches") } }
-        .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $renameText)
-            Button("Save") { if let v = renaming { env.library.rename(v, to: renameText) }; renaming = nil }
-            Button("Cancel", role: .cancel) { renaming = nil }
+    }
+
+    /// Bottom bar while selecting — Files/Photos style: actions in a row, count in the title.
+    private var selectionBar: some View {
+        let n = selection.count
+        let picked = selectedVideos
+        let allFav = !picked.isEmpty && picked.allSatisfy { env.favorites.isFavorite(PlayableItem(video: $0)) }
+        return HStack(spacing: 0) {
+            barButton("play.fill", "Play") {
+                let q = picked.map(PlayableItem.init(video:))
+                if let first = q.first { playback.play(first, queue: q, origin: .phone, resume: true); endSelecting() }
+            }
+            barButton(allFav ? "heart.slash" : "heart", allFav ? "Unfavorite" : "Favorite") {
+                for v in picked {
+                    let ref = PlayableRef(id: v.id, kind: .localVideo)
+                    if allFav { env.favorites.remove(ref) } else { env.favorites.add(ref) }
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+            barButton("folder", "Move") { showMove = true }
+            barButton("trash", "Delete", destructive: true) { confirmDelete = true }
         }
+        .disabled(n == 0)
+        .opacity(n == 0 ? 0.45 : 1)
+        .padding(.horizontal, Theme.s2).padding(.vertical, 6)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func barButton(_ symbol: String, _ title: LocalizedStringResource, destructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(role: destructive ? .destructive : nil, action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: symbol).font(.system(size: 20, weight: .medium))
+                Text(title).font(.system(size: 10.5, weight: .medium))
+            }
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .contentShape(Rectangle())
+        }
+        .foregroundStyle(destructive ? Theme.live : Theme.accent)
+    }
+
+    // MARK: Selection
+
+    private func toggle(_ v: LocalVideo) {
+        if selection.contains(v.id) { selection.remove(v.id) } else { selection.insert(v.id) }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func endSelecting() {
+        withAnimation(.easeOut(duration: 0.2)) { selecting = false; selection = [] }
+    }
+}
+
+/// Filled check when selected, hollow ring when not — the system look on photos/files.
+struct SelectionBadge: View {
+    let on: Bool
+    var body: some View {
+        ZStack {
+            Circle().fill(on ? Theme.accent : Color.black.opacity(0.35)).frame(width: 24, height: 24)
+            Circle().strokeBorder(.white, lineWidth: on ? 0 : 1.5).frame(width: 24, height: 24)
+            if on { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.black) }
+        }
+        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+        .contentTransition(.symbolEffect(.replace))
     }
 }
