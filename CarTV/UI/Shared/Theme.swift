@@ -77,9 +77,15 @@ nonisolated struct CarMetrics: Equatable {
     /// lay out at that design size and are scaled down as one, so every control,
     /// label and the player keep their proportions instead of overflowing.
     static let designSize = CGSize(width: 800, height: 480)
+    /// Portrait head units are designed at the rotated size; the layout goes
+    /// `compact` there anyway, so only genuinely narrow screens get shrunk.
+    static func design(for size: CGSize) -> CGSize {
+        size.height > size.width ? CGSize(width: designSize.height, height: designSize.width) : designSize
+    }
     static func scale(for size: CGSize) -> CGFloat {
         guard size.width > 0, size.height > 0 else { return 1 }
-        return min(1, size.width / designSize.width, size.height / designSize.height)
+        let d = design(for: size)
+        return min(1, size.width / d.width, size.height / d.height)
     }
     /// Size the UI is laid out at (real size ÷ scale).
     static func layoutSize(for size: CGSize) -> CGSize {

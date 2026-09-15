@@ -62,8 +62,12 @@ struct CarRootView: View {
             let scale = CarMetrics.scale(for: geo.size)
             let layout = CarMetrics.layoutSize(for: geo.size)
             let metrics = CarMetrics(size: layout)
+            // Safe-area insets are in screen points; inside the scaled tree they must be
+            // in layout points, so re-apply them as padding ourselves.
+            let insets = EdgeInsets(top: geo.safeAreaInsets.top / scale, leading: geo.safeAreaInsets.leading / scale,
+                                    bottom: geo.safeAreaInsets.bottom / scale, trailing: geo.safeAreaInsets.trailing / scale)
             ZStack(alignment: .top) {
-                Theme.ground.ignoresSafeArea()
+                Theme.ground
 
                 VStack(spacing: 0) {
                     CarHeader(
@@ -113,12 +117,16 @@ struct CarRootView: View {
                 }
                 DownloadNoticeBanner(compact: true).zIndex(2)
             }
+            .padding(insets)
             // Small display → lay out at the design size, shrink the whole tree to fit.
-            .frame(width: layout.width, height: layout.height)
+            .frame(width: layout.width + insets.leading + insets.trailing, height: layout.height + insets.top + insets.bottom)
             .scaleEffect(scale, anchor: .topLeading)
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .frame(width: geo.size.width + geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing,
+                   height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom, alignment: .topLeading)
+            .offset(x: -geo.safeAreaInsets.leading, y: -geo.safeAreaInsets.top)
             .environment(\.carMetrics, metrics)
             .background(Theme.ground.ignoresSafeArea())
+            .ignoresSafeArea()
         }
         .preferredColorScheme(settings.appearance.colorScheme ?? (car.contentStyle == .light ? .light : .dark))
         .onChange(of: playback.current?.id) { old, new in
@@ -247,6 +255,10 @@ struct CarHeader: View {
         .animation(.snappy(duration: 0.32, extraBounce: 0.05), value: nowPlaying?.id)
     }
 
+    /// Icons when the row is shared with Now Playing (or the display is compact);
+    /// the selected tab still shows its name. Full labels otherwise.
+    private var iconMode: Bool { nowPlaying != nil || m.compact }
+
     private var segments: some View {
         HStack(spacing: 0) {
             ForEach(CarSection.allCases.filter { $0 != .tiktok || settings.tiktokEnabled }, id: \.self) { (s: CarSection) in
@@ -255,26 +267,38 @@ struct CarHeader: View {
                     withAnimation(.snappy(duration: 0.28, extraBounce: 0.08)) { section = s }
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
-                    Text(s.title)
-                        .font(font)
-                        .foregroundStyle(selected ? Color.black : Theme.ink)
-                        .padding(.horizontal, m.compact ? 18 : 26)
-                        .frame(height: h - 8)
-                        .background {
-                            if selected {
-                                Capsule().fill(Theme.accent)
-                                    .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 2)
-                                    .matchedGeometryEffect(id: "seg", in: ns)
-                            }
+                    HStack(spacing: 7) {
+                        if iconMode {
+                            Image(systemName: s.symbol)
+                                .font(.system(size: m.compact ? 15 : 17, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
                         }
-                        .contentShape(Capsule())
-                        .scaleEffect(selected ? 1 : 0.98)
+                        if !iconMode || selected {
+                            Text(s.title).font(font).lineLimit(1).fixedSize()
+                        }
+                    }
+                    .foregroundStyle(selected ? Color.black : Theme.ink)
+                    .padding(.horizontal, iconMode ? (m.compact ? 13 : 16) : (m.compact ? 18 : 26))
+                    .frame(height: h - 8)
+                    .frame(minWidth: h - 8)
+                    .background {
+                        if selected {
+                            Capsule().fill(Theme.accent)
+                                .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 2)
+                                .matchedGeometryEffect(id: "seg", in: ns)
+                        }
+                    }
+                    .contentShape(Capsule())
+                    .scaleEffect(selected ? 1 : 0.98)
+                    .accessibilityLabel(Text(s.title))
                 }
                 .buttonStyle(CarPressStyle())
             }
         }
         .padding(4)
         .glassEffect(.regular.interactive(), in: Capsule())
+        .fixedSize(horizontal: true, vertical: false)
+        .animation(.snappy(duration: 0.28), value: iconMode)
     }
 
     private func backPill(_ route: CarRoute) -> some View {
