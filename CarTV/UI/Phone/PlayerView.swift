@@ -16,6 +16,9 @@ struct PlayerView: View {
     @State private var showSubtitleFile = false
     @State private var seekFlash: (Int, Bool)?   // (seconds, forward)
     @State private var isLandscape = UIDevice.current.orientation.isLandscape
+    /// Interactive swipe-down: the whole player follows the finger, shrinks and
+    /// rounds like Apple TV / YouTube collapsing to a mini player, then hands off.
+    @State private var dragY: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -41,6 +44,30 @@ struct PlayerView: View {
 
                 if controlsVisible { controls(landscape: landscape).zIndex(1) }
             }
+            // Collapse-to-mini-player. Vertical drags only; horizontal stays with the
+            // seek taps. Past the threshold on release → exit full screen (playback
+            // keeps going in the mini bar). Otherwise spring back.
+            .scaleEffect(1 - min(dragY, 300) / 1400, anchor: .center)
+            .clipShape(RoundedRectangle(cornerRadius: min(dragY, 300) / 300 * 28, style: .continuous))
+            .offset(y: dragY)
+            .background(Color.black.opacity(1 - min(dragY, 300) / 300 * 0.55).ignoresSafeArea())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24, coordinateSpace: .global)
+                    .onChanged { v in
+                        guard !scrubbing, abs(v.translation.height) > abs(v.translation.width) else { return }
+                        dragY = max(0, v.translation.height * 0.9)
+                    }
+                    .onEnded { v in
+                        let fast = v.predictedEndTranslation.height > 260
+                        if dragY > 110 || fast {
+                            withAnimation(.snappy(duration: 0.28)) { dragY = geo.size.height }
+                            close()
+                            Task { try? await Task.sleep(for: .milliseconds(320)); dragY = 0 }
+                        } else {
+                            withAnimation(.spring(duration: 0.4, bounce: 0.25)) { dragY = 0 }
+                        }
+                    }
+            )
             .statusBarHidden(!controlsVisible)
             .persistentSystemOverlays(controlsVisible ? .automatic : .hidden)
             .onAppear { scheduleHide() }
@@ -73,12 +100,6 @@ struct PlayerView: View {
                 .onTapGesture { toggleControls() }
         }
         .ignoresSafeArea()
-        .gesture(
-            DragGesture(minimumDistance: 30)
-                .onEnded { v in
-                    if abs(v.translation.height) > abs(v.translation.width), v.translation.height > 80 { close() }
-                }
-        )
         .overlay {
             if let (secs, fwd) = seekFlash {
                 HStack(spacing: 6) {

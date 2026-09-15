@@ -52,6 +52,9 @@ struct PhoneRootView: View {
         .preferredColorScheme(settings.appearance.colorScheme)
         .fullScreenCover(isPresented: $playerShown) {
             PlayerView()
+                // Clear backing so the swipe-down collapse reveals the app underneath
+                // instead of a black slab. PlayerView paints its own dimming layer.
+                .presentationBackground(.clear)
         }
         .onChange(of: playback.isPhonePlayerPresented, initial: true) { _, shown in
             if playerShown != shown { playerShown = shown }

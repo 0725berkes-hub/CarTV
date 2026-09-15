@@ -179,30 +179,64 @@ actor YTChallengeSolver {
     }
 
     // MARK: URL rewriting
+    //
+    // Plain string surgery on purpose: rebuilding the query through URLComponents
+    // re-encodes every other parameter (sparams, xpc, …) and Google's signature
+    // check then fails intermittently with 403 — which looked like "limited stream".
 
-    /// Applies `n` and (if present) `sig` solutions to a format's URL / signatureCipher.
     nonisolated static func nParam(of url: URL) -> String? {
-        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "n" }?.value
+        queryValue(url.absoluteString, "n")
     }
 
     nonisolated static func replacing(url: URL, n: String?, nSolved: String?) -> URL {
-        guard let n, let nSolved, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        comps.queryItems = comps.queryItems?.map { $0.name == "n" && $0.value == n ? URLQueryItem(name: "n", value: nSolved) : $0 }
-        return comps.url ?? url
+        guard let n, let nSolved, let range = paramRange(url.absoluteString, "n", value: n) else { return url }
+        var str = url.absoluteString
+        str.replaceSubrange(range, with: "n=\(nSolved)")
+        return URL(string: str) ?? url
     }
 
     /// signatureCipher = "s=<sig>&sp=<param>&url=<encoded url>"
     nonisolated static func parseCipher(_ cipher: String) -> (s: String, sp: String, url: URL)? {
-        var comps = URLComponents(); comps.percentEncodedQuery = cipher
-        let items = comps.queryItems ?? []
-        guard let s = items.first(where: { $0.name == "s" })?.value,
-              let u = items.first(where: { $0.name == "url" })?.value, let url = URL(string: u) else { return nil }
-        return (s, items.first(where: { $0.name == "sp" })?.value ?? "signature", url)
+        var s: String?, sp: String?, u: String?
+        for pair in cipher.split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard kv.count == 2 else { continue }
+            let v = kv[1].removingPercentEncoding ?? kv[1]
+            switch kv[0] { case "s": s = v; case "sp": sp = v; case "url": u = v; default: break }
+        }
+        guard let s, let u, let url = URL(string: u) else { return nil }
+        return (s, sp ?? "signature", url)
     }
 
     nonisolated static func appending(url: URL, param: String, value: String) -> URL {
-        guard var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: param, value: value)]
-        return comps.url ?? url
+        let encoded = value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
+        let sep = url.absoluteString.contains("?") ? "&" : "?"
+        return URL(string: url.absoluteString + sep + param + "=" + encoded) ?? url
+    }
+
+    nonisolated static func removing(url: URL, param: String) -> URL {
+        guard let v = queryValue(url.absoluteString, param), let r = paramRange(url.absoluteString, param, value: v) else { return url }
+        var str = url.absoluteString
+        // Drop the preceding separator too.
+        let lower = str.index(before: r.lowerBound)
+        str.removeSubrange(lower..<r.upperBound)
+        return URL(string: str) ?? url
+    }
+
+    nonisolated private static func queryValue(_ str: String, _ key: String) -> String? {
+        guard let q = str.firstIndex(of: "?") else { return nil }
+        for pair in str[str.index(after: q)...].split(separator: "&") {
+            if pair.hasPrefix(key + "=") { return String(pair.dropFirst(key.count + 1)) }
+        }
+        return nil
+    }
+
+    nonisolated private static func paramRange(_ str: String, _ key: String, value: String) -> Range<String.Index>? {
+        for needle in ["&\(key)=\(value)", "?\(key)=\(value)"] {
+            if let r = str.range(of: needle) {
+                return str.index(after: r.lowerBound)..<r.upperBound
+            }
+        }
+        return nil
     }
 }

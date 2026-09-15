@@ -191,8 +191,9 @@ nonisolated struct YTPlayerResponse: Sendable {
         for (i, f) in formats.enumerated() {
             let n = YTChallengeSolver.nParam(of: f.url)
             var cipher: (String, String)? = nil
-            if let comps = URLComponents(url: f.url, resolvingAgainstBaseURL: false),
-               let raw = comps.queryItems?.first(where: { $0.name == "__cipher_s" })?.value {
+            if let q = f.url.absoluteString.firstIndex(of: "?"),
+               let pair = f.url.absoluteString[q...].split(separator: "&").first(where: { $0.hasPrefix("__cipher_s=") || $0.hasPrefix("?__cipher_s=") }) {
+                let raw = (String(pair.split(separator: "=", maxSplits: 1).last ?? "")).removingPercentEncoding ?? ""
                 let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
                 if parts.count == 2 { cipher = (parts[0], parts[1]); sigChallenges.append(parts[0]) }
             }
@@ -207,11 +208,7 @@ nonisolated struct YTPlayerResponse: Sendable {
                 var url = copy.formats[p.idx].url
                 if let n = p.n { url = YTChallengeSolver.replacing(url: url, n: n, nSolved: r.n[n]) }
                 if let c = p.cipher {
-                    // strip the marker, then append the decoded signature
-                    if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-                        comps.queryItems = comps.queryItems?.filter { $0.name != "__cipher_s" }
-                        url = comps.url ?? url
-                    }
+                    url = YTChallengeSolver.removing(url: url, param: "__cipher_s")
                     if let sig = r.sig[c.s] { url = YTChallengeSolver.appending(url: url, param: c.sp, value: sig) }
                 }
                 copy.formats[p.idx].url = url
