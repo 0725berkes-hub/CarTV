@@ -4,11 +4,11 @@ import Foundation
 // Siri / Shortcuts / Spotlight for CarTV. Pure AppIntents — public framework,
 // no entitlement, no Info.plist keys, works over CarPlay's Siri button too.
 //
-//   "Hey Siri, play K24 on CarTV"
-//   "Hey Siri, play Al Jazeera in CarTV"
-//   "Hey Siri, continue watching on CarTV"
-//   "Hey Siri, resume my show in CarTV"
-//   "Hey Siri, pause CarTV" / "next channel on CarTV"
+//   "Hey Siri, play K24 on CarFlix"
+//   "Hey Siri, play Al Jazeera in CarFlix"
+//   "Hey Siri, continue watching on CarFlix"
+//   "Hey Siri, resume my show in CarFlix"
+//   "Hey Siri, pause CarFlix" / "next channel on CarFlix"
 
 // MARK: - Entity: anything playable, resolved by name
 
@@ -55,8 +55,8 @@ struct PlayableQuery: EntityQuery, EntityStringQuery {
 // MARK: - Intents
 
 struct PlayTitleIntent: AudioPlaybackIntent {
-    static let title: LocalizedStringResource = "Play on CarTV"
-    static let description = IntentDescription("Plays a channel, movie, series or video in CarTV.")
+    static let title: LocalizedStringResource = "Play on CarFlix"
+    static let description = IntentDescription("Plays a channel, movie, series or video in CarFlix.")
     static let openAppWhenRun = true
 
     @Parameter(title: "What to play", requestValueDialog: "What do you want to watch?")
@@ -67,7 +67,7 @@ struct PlayTitleIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard try await PlayableResolver.play(id: target.id) else {
-            return .result(dialog: target.id.hasPrefix("shuffle:") ? "You haven't added any videos to CarTV yet." : "I couldn't find that in CarTV.")
+            return .result(dialog: target.id.hasPrefix("shuffle:") ? "You haven't added any videos to CarFlix yet." : "I couldn't find that in CarFlix.")
         }
         return .result(dialog: target.id.hasPrefix("shuffle:") ? "Shuffling your videos." : "Playing \(target.title).")
     }
@@ -133,7 +133,7 @@ struct ShuffleVideosIntent: AudioPlaybackIntent {
             where_ = String(localized: "your library")
         }
         guard !videos.isEmpty else {
-            return .result(dialog: folder == nil ? "You haven't added any videos to CarTV yet." : "That folder is empty.")
+            return .result(dialog: folder == nil ? "You haven't added any videos to CarFlix yet." : "That folder is empty.")
         }
         let pool = videos.map(PlayableItem.init(video:))
         env.playback.playRandom(from: pool, origin: origin)
@@ -174,7 +174,7 @@ struct VideoFolderQuery: EntityQuery, EntityStringQuery {
 }
 
 struct PausePlaybackIntent: AudioPlaybackIntent {
-    static let title: LocalizedStringResource = "Pause CarTV"
+    static let title: LocalizedStringResource = "Pause CarFlix"
     @MainActor
     func perform() async throws -> some IntentResult {
         AppEnvironment.shared.playback.pause()
@@ -183,7 +183,7 @@ struct PausePlaybackIntent: AudioPlaybackIntent {
 }
 
 struct ResumePlaybackIntent: AudioPlaybackIntent {
-    static let title: LocalizedStringResource = "Resume CarTV"
+    static let title: LocalizedStringResource = "Resume CarFlix"
     @MainActor
     func perform() async throws -> some IntentResult {
         AppEnvironment.shared.playback.resume()
@@ -192,7 +192,7 @@ struct ResumePlaybackIntent: AudioPlaybackIntent {
 }
 
 struct NextItemIntent: AudioPlaybackIntent {
-    static let title: LocalizedStringResource = "Next on CarTV"
+    static let title: LocalizedStringResource = "Next on CarFlix"
     @MainActor
     func perform() async throws -> some IntentResult {
         AppEnvironment.shared.playback.next()
@@ -201,7 +201,7 @@ struct NextItemIntent: AudioPlaybackIntent {
 }
 
 struct PreviousItemIntent: AudioPlaybackIntent {
-    static let title: LocalizedStringResource = "Previous on CarTV"
+    static let title: LocalizedStringResource = "Previous on CarFlix"
     @MainActor
     func perform() async throws -> some IntentResult {
         AppEnvironment.shared.playback.previous()

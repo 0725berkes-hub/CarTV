@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>CarTV</string>
+	<string>CarFlix</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -60,11 +60,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>CarTV uses the camera to scan QR codes so you can add a playlist quickly.</string>
+	<string>CarFlix uses the camera to scan QR codes so you can add a playlist quickly.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>CarTV imports videos and QR-code images from your photo library.</string>
+	<string>CarFlix imports videos and QR-code images from your photo library.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>CarTV uses your local network to receive video casts from other apps and to reach playlists and media streams you add.</string>
+	<string>CarFlix uses your local network to receive video casts from other apps and to reach playlists and media streams you add.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_cartvcast._tcp</string>

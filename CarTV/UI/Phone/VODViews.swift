@@ -54,7 +54,7 @@ struct VODHubView: View {
                     case .idle where vod.movies.isEmpty, .loading where vod.movies.isEmpty:
                         loadingShelves
                     case .failed(let msg) where vod.movies.isEmpty:
-                        EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load MyTV+", message: LocalizedStringResource(stringLiteral: msg),
+                        EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load CarFlix+", message: LocalizedStringResource(stringLiteral: msg),
                                    actionTitle: "Retry") { vod.loadIfNeeded(force: true) }
                     default:
                         if mode == .movies {
@@ -80,7 +80,7 @@ struct VODHubView: View {
             .padding(.vertical, Theme.s3)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .navigationTitle("MyTV+")
+        .navigationTitle("CarFlix+")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: Text("Search movies and series"))
         // VODMovie / VODSeries destinations are registered on the owning

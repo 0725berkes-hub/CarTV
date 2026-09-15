@@ -46,8 +46,8 @@ struct TTFeedView: View {
         VStack(spacing: Theme.s5) {
             Spacer()
             TikTokMark(size: 72)
-            Text("Your For You page, in CarTV").font(Theme.Font.title).foregroundStyle(.white).multilineTextAlignment(.center)
-            Text("Sign in to tiktok.com once. CarTV keeps the session and shows your personal feed — on the phone and on the car screen. Nothing is posted or liked on your behalf.")
+            Text("Your For You page, in CarFlix").font(Theme.Font.title).foregroundStyle(.white).multilineTextAlignment(.center)
+            Text("Sign in to tiktok.com once. CarFlix keeps the session and shows your personal feed — on the phone and on the car screen. Nothing is posted or liked on your behalf.")
                 .font(Theme.Font.body).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center).frame(maxWidth: 340)
             Button { showSignIn = true } label: {
                 Label("Sign in to TikTok", systemImage: "person.crop.circle").font(Theme.Font.headline)
@@ -173,14 +173,17 @@ private struct TTPage: View {
             // the non-current pages show.
             RemoteImage(url: video.coverURL, targetSize: CGSize(width: 720, height: 1280), contentMode: .fill) { Color.black }
                 .frame(width: size.width, height: size.height).clipped()
-                .blur(radius: isCurrent && playback.isPlaying ? 0 : 0)
 
             if isCurrent {
                 PhoneVideoSurface()
                     .id("tt-\(playback.videoViewRevision)")
                     .frame(width: size.width, height: size.height)
+                    // Cover shows through until the first frame; no black gap.
                     .opacity(playback.snapshot.state == .loading ? 0 : 1)
-                    .animation(.easeOut(duration: 0.2), value: playback.snapshot.state == .loading)
+                    .animation(.easeOut(duration: 0.25), value: playback.snapshot.state == .loading)
+                if playback.snapshot.state == .loading || playback.snapshot.state == .buffering {
+                    VStack { LoadingLine().padding(.top, 58); Spacer() }.allowsHitTesting(false)
+                }
             }
 
             // Tap to pause/resume with a fading glyph, like the real thing.

@@ -11,7 +11,7 @@ enum MyTVService {
 
     /// Sentinel URL stored on the playlist so we can find/refresh/remove it.
     nonisolated static let sourceURL = URL(string: "mytv://builtin")!
-    nonisolated static let playlistName = "MyTV+"
+    nonisolated static let playlistName = "CarFlix+"
 
     nonisolated private static let api = URL(string: "https://androidapi.appmytv.com/android/v2/channels/getChannelsDetail_local.php")!
     /// Relay that fetches the catalogue *and* proxies every stream from one fixed IP.

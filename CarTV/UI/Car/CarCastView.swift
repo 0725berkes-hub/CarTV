@@ -15,7 +15,7 @@ struct CarCastView: View {
                 .foregroundStyle(Theme.accent)
             Text("Cast anything to this screen")
                 .font(Theme.Car.title(m.compact ? 20 : 30)).foregroundStyle(Theme.ink)
-            Text("On your iPhone, open CarTV → Cast, then tap Start mirroring or paste a link.")
+            Text("On your iPhone, open CarFlix → Cast, then tap Start mirroring or paste a link.")
                 .font(.system(size: m.compact ? 13 : 17)).foregroundStyle(Theme.inkMuted)
                 .multilineTextAlignment(.center).frame(maxWidth: 560)
             HStack(spacing: 8) {

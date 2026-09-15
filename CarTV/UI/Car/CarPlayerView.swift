@@ -25,12 +25,16 @@ struct CarPlayerView: View {
             Color.black.ignoresSafeArea()
 
             if car.supportsVideoPlayback {
-                // Vertical video (TikTok) on a wide car screen: fill the pillars with the
-                // blurred cover so it reads as one frame instead of a strip on black.
-                if playback.current?.ref.kind == .tiktok, let art = playback.current?.artworkURL {
+                // Portrait video on a wide car screen: fill the pillars with the blurred
+                // cover so it reads as one frame instead of a strip on black.
+                if let cur = playback.current, cur.ref.kind == .tiktok || playback.snapshot.videoSize.height > playback.snapshot.videoSize.width,
+                   let art = cur.artworkURL {
                     RemoteImage(url: art, targetSize: CGSize(width: 360, height: 640), contentMode: .fill) { Color.black }
-                        .blur(radius: 40).opacity(0.55).ignoresSafeArea()
-                        .overlay(Color.black.opacity(0.25).ignoresSafeArea())
+                        .id(cur.id)
+                        .blur(radius: 48).saturation(1.2).opacity(0.7).ignoresSafeArea()
+                        .overlay(Color.black.opacity(0.2).ignoresSafeArea())
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.35), value: cur.id)
                 }
                 VideoSurface().id(playback.videoViewRevision).ignoresSafeArea()
                 if playback.subtitles.isExternalActive {
@@ -94,7 +98,11 @@ struct CarPlayerView: View {
         .onChange(of: playback.isPlaying, initial: true) { _, playing in
             if playing { scheduleHide() } else { withAnimation { controlsVisible = true } }
         }
-        .onChange(of: playback.current?.id) { _, _ in withAnimation { controlsVisible = true }; scheduleHide() }
+        .onChange(of: playback.current?.id) { _, _ in
+            // Feeds auto-advance constantly; popping controls on each would be noise.
+            guard playback.current?.ref.kind != .tiktok else { return }
+            withAnimation { controlsVisible = true }; scheduleHide()
+        }
     }
 
     // MARK: Controls
@@ -212,14 +220,19 @@ struct CarPlayerView: View {
     @ViewBuilder private var stateOverlay: some View {
         switch playback.snapshot.state {
         case .loading, .buffering:
-            VStack(spacing: Theme.s2) {
-                ProgressView().controlSize(m.compact ? .regular : .large).tint(.white)
-                Text(playback.isFallingBack ? "Switching decoder…" : "Loading…")
-                    .font(.system(size: m.compact ? 11 : 14)).foregroundStyle(.white.opacity(0.8))
+            if playback.current?.ref.kind == .tiktok {
+                // Feed: the cover is already painted behind; a quiet line at the top is enough.
+                VStack { LoadingLine().padding(.top, 2); Spacer() }.allowsHitTesting(false)
+            } else {
+                VStack(spacing: Theme.s2) {
+                    ProgressView().controlSize(m.compact ? .regular : .large).tint(.white)
+                    Text(playback.isFallingBack ? "Switching decoder…" : "Loading…")
+                        .font(.system(size: m.compact ? 11 : 14)).foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(m.compact ? Theme.s3 : Theme.s5)
+                .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+                .allowsHitTesting(false)
             }
-            .padding(m.compact ? Theme.s3 : Theme.s5)
-            .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
-            .allowsHitTesting(false)
         case .failed(let f):
             VStack(spacing: Theme.s3) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: m.compact ? 24 : 36)).foregroundStyle(Theme.amber)

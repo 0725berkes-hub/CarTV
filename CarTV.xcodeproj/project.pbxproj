@@ -426,7 +426,7 @@
 				DEVELOPMENT_TEAM = XJR63P2754;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ScreenRelay/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = CarTV;
+				INFOPLIST_KEY_CFBundleDisplayName = CarFlix;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -454,7 +454,7 @@
 				DEVELOPMENT_TEAM = XJR63P2754;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ScreenRelay/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = CarTV;
+				INFOPLIST_KEY_CFBundleDisplayName = CarFlix;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

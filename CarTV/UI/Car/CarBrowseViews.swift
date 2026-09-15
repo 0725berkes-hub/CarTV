@@ -15,7 +15,7 @@ struct CarHomeView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: m.compact ? Theme.s4 : Theme.s6) {
                 if playlists.isEmpty && videos.isEmpty {
-                    CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarTV on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
+                    CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarFlix on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
                 }
                 CarContinueWatchingShelf()
 

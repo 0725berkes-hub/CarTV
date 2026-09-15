@@ -46,7 +46,7 @@ struct SettingsView: View {
                     Toggle(isOn: $settings.mytvEnabled) {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("MyTV+ channels")
+                                Text("CarFlix+ channels")
                                 Text(mytvStatus).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
                             }
                         } icon: { Image(systemName: "tv.badge.wifi").foregroundStyle(Theme.accent) }
@@ -66,7 +66,7 @@ struct SettingsView: View {
                         Button(role: .destructive) { env.tiktok.signOut() } label: { Label("Sign out of TikTok", systemImage: "rectangle.portrait.and.arrow.right") }
                     }
                 } header: { Text("Built-in sources") } footer: {
-                    Text("MyTV+ adds 360+ live Kurdish, Arabic and international channels. TikTok shows your own For You page using your tiktok.com login — read-only, nothing is posted or liked.")
+                    Text("CarFlix+ adds 360+ live Kurdish, Arabic and international channels, plus movies and series. TikTok shows your own For You page using your tiktok.com login — read-only, nothing is posted or liked.")
                 }
 
                 Section {
@@ -135,7 +135,7 @@ struct SettingsView: View {
                     dismiss()
                 }
                 Button("Cancel", role: .cancel) {}
-            } message: { Text("CarTV will look like it was just installed.") }
+            } message: { Text("CarFlix will look like it was just installed.") }
         }
     }
 

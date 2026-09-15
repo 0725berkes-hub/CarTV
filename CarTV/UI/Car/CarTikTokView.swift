@@ -14,7 +14,7 @@ struct CarTikTokView: View {
         let tt = env.tiktok
         if !tt.session.isSignedIn {
             CarEmptyState(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in on your iPhone",
-                          message: "Open the TikTok tab in CarTV on your phone and sign in once. Your feed appears here.")
+                          message: "Open the TikTok tab in CarFlix on your phone and sign in once. Your feed appears here.")
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: Theme.s2) {

@@ -114,7 +114,7 @@ struct LibraryView: View {
             } message: { Text("Keeping the videos moves them to “Videos”.") }
             .confirmationDialog("Delete Playlist", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { if let p = deleting { env.library.delete(p) }; deleting = nil }
-            } message: { Text("This removes the playlist and its channels from CarTV.") }
+            } message: { Text("This removes the playlist and its channels from CarFlix.") }
             .overlay(alignment: .bottom) { importOverlay }
             .overlay(alignment: .top) {
                 if let toast {
@@ -156,7 +156,7 @@ struct LibraryView: View {
                 }
             }
         } header: {
-            Text("MyTV+").eyebrow()
+            Text("CarFlix+").eyebrow()
         }
     }
 

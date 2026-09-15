@@ -20,13 +20,13 @@ struct OnboardingView: View {
 
     private let pages: [Page] = [
         .init(kind: .hero, tint: Theme.accent,
-              eyebrow: "CarTV", title: "Your car just\ngot a TV",
+              eyebrow: "CarFlix", title: "Your car just\ngot a TV",
               body: "Live channels, YouTube, movies, series and your own videos — on your iPhone and on the CarPlay screen.",
               proof: ["Free", "No account needed", "Works offline"]),
         .init(kind: .channels, tint: Color(hue: 0.60, saturation: 0.65, brightness: 0.98),
               eyebrow: "LIVE TV", title: "360+ channels,\nready now",
               body: "News, sports, kids, music and movies in Kurdish, Arabic and English — sorted for you. Or add any M3U or Xtream playlist.",
-              proof: ["Built-in MyTV+", "One tap to turn on"]),
+              proof: ["Built-in CarFlix+", "One tap to turn on"]),
         .init(kind: .youtube, tint: Color(red: 1.0, green: 0.0, blue: 0.0),
               eyebrow: "YOUTUBE", title: "YouTube on\nthe dash",
               body: "Your subscriptions, Watch Later and playlists, playable in the car. Sign in with Google to see your feed, or just browse.",
@@ -89,7 +89,7 @@ struct OnboardingView: View {
                     .animation(.easeInOut(duration: 0.4), value: page)
                     .sensoryFeedback(.selection, trigger: page)
 
-                    Button(isLast ? "Start without MyTV+" : " ") {
+                    Button(isLast ? "Start without CarFlix+" : " ") {
                         if isLast { enableMyTV = false; wantsYouTube = false; complete() }
                     }
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.55))
@@ -458,7 +458,7 @@ private struct SetupCard: View {
 
             VStack(spacing: 1) {
                 SetupSwitch(isOn: $enableMyTV, symbol: "tv.badge.wifi", tint: Theme.accent,
-                            title: "MyTV+ channels, movies & series", subtitle: "360+ live · 12K movies · 8K series")
+                            title: "CarFlix+ channels, movies & series", subtitle: "360+ live · 12K movies · 8K series")
                 Divider().overlay(.white.opacity(0.08)).padding(.horizontal, Theme.s4)
                 SetupSwitch(isOn: $wantsYouTube, brandImage: "YouTubeMark", tint: Color(red: 1.0, green: 0.0, blue: 0.0),
                             title: "Sign in to YouTube", subtitle: "Subscriptions & Watch Later — optional")

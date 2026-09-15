@@ -301,3 +301,22 @@ struct UpNextButton: View {
         .buttonStyle(.plain)
     }
 }
+
+
+/// TikTok-style indeterminate loader: a thin bar with a bright segment sweeping across.
+struct LoadingLine: View {
+    @State private var x: CGFloat = -0.3
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.15))
+                Capsule().fill(.white.opacity(0.9))
+                    .frame(width: geo.size.width * 0.3)
+                    .offset(x: geo.size.width * x)
+            }
+        }
+        .frame(height: 2)
+        .padding(.horizontal, 16)
+        .onAppear { withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { x = 1.0 } }
+    }
+}
