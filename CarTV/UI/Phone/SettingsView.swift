@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(AppSettings.self) private var settings
     @Environment(PlaybackController.self) private var playback
+    @Environment(\.dismiss) private var dismiss
     @State private var cacheCleared = false
 
     private var version: String {
