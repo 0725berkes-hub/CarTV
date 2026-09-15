@@ -25,8 +25,9 @@ enum CarRoute: Hashable {
 }
 
 /// Root of the car UI. System `TabView` (Liquid Glass tab bar) + `NavigationStack`
-/// per tab, with the system bottom accessory for Now Playing — the same native
-/// chrome as the phone, so it inherits appearance, focus, and knob navigation.
+/// per tab. UIKit's tab bar renders in a compact, untinted style under the CarPlay
+/// idiom (no icons, no accent, a scroll-hint dot), so the tabs are our own glass
+/// capsule at the top — same look as the phone's bar — over native NavigationStacks.
 struct CarRootView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
@@ -41,24 +42,24 @@ struct CarRootView: View {
             let metrics = CarMetrics(size: geo.size)
             ZStack {
                 CarBackdrop()
-                TabView(selection: $section) {
-                    Tab("Home", systemImage: "house.fill", value: .home) {
-                        CarNavHost(title: "Home") { CarHomeView() }
+
+                VStack(spacing: 0) {
+                    CarTabBar(section: $section, nowPlaying: playback.isActive ? playback.current : nil) {
+                        withAnimation(.easeOut(duration: 0.2)) { showPlayer = true }
                     }
-                    Tab("Favorites", systemImage: "heart.fill", value: .favorites) {
-                        CarNavHost(title: "Favorites") { CarFavoritesView() }
+                    .padding(.horizontal, metrics.gutter)
+                    .padding(.vertical, Theme.s2)
+
+                    ZStack {
+                        switch section {
+                        case .home:      CarNavHost(title: "Home") { CarHomeView() }
+                        case .favorites: CarNavHost(title: "Favorites") { CarFavoritesView() }
+                        case .cast:      CarNavHost(title: "Cast") { CarCastView() }
+                        case .library:   CarNavHost(title: "Library") { CarLibraryView() }
+                        }
                     }
-                    Tab("Cast", systemImage: "tv.badge.wifi", value: .cast) {
-                        CarNavHost(title: "Cast") { CarCastView() }
-                    }
-                    Tab("Library", systemImage: "square.stack.fill", value: .library) {
-                        CarNavHost(title: "Library") { CarLibraryView() }
-                    }
+                    .id(section)
                 }
-                .tabViewBottomAccessory(isEnabled: playback.isActive) {
-                    CarNowPlayingAccessory { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
-                }
-                .tint(Theme.accent)
 
                 if env.mirror.state == .mirroring {
                     CarMirrorStage()
@@ -127,8 +128,7 @@ struct CarNavHost<Root: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             root()
-                .navigationTitle(Text(title))
-                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: CarRoute.self) { route in
                     Group {
                         switch route {
@@ -164,55 +164,70 @@ extension EnvironmentValues {
     var carPush: CarPush { get { self[CarPushKey.self] } set { self[CarPushKey.self] = newValue } }
 }
 
-// MARK: - Now Playing accessory (system bottom accessory)
+// MARK: - Tab bar (glass capsule, mirrors the phone's look)
 
-struct CarNowPlayingAccessory: View {
+struct CarTabBar: View {
     @Environment(PlaybackController.self) private var playback
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
-    let open: () -> Void
+    @Environment(\.carMetrics) private var m
+    @Binding var section: CarSection
+    let nowPlaying: PlayableItem?
+    let openPlayer: () -> Void
 
     var body: some View {
-        if let item = playback.current {
-            HStack(spacing: 8) {
-                // Artwork + titles are one big "open the player" button. A real Button
-                // (not onTapGesture) so it wins against the siblings and takes knob focus.
-                Button(action: open) {
-                    HStack(spacing: 12) {
+        HStack(spacing: Theme.s2) {
+            GlassEffectContainer(spacing: 4) {
+                HStack(spacing: 4) {
+                    ForEach(CarSection.allCases, id: \.self) { s in
+                        Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: s.symbol).font(.system(size: m.compact ? 13 : 16, weight: .bold))
+                                if section == s || !m.compact {
+                                    Text(s.title).font(.system(size: m.compact ? 12 : 15, weight: .semibold))
+                                }
+                            }
+                            .foregroundStyle(section == s ? Color.black : Theme.ink)
+                            .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
+                            .frame(height: m.headerHeight - 8)
+                            .background(section == s ? Theme.accent : .clear, in: Capsule())
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(CarFocusButtonStyle())
+                    }
+                }
+                .padding(4)
+            }
+            .glassEffect(.regular.interactive(), in: Capsule())
+
+            Spacer(minLength: 0)
+
+            if let item = nowPlaying {
+                Button(action: openPlayer) {
+                    HStack(spacing: 10) {
                         ZStack {
                             TileTint.gradient(for: item.title)
                             RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 96, height: 96), contentMode: item.isLocal ? .fill : .fit) {
                                 Monogram(text: item.title, size: 11)
                             }.padding(item.isLocal ? 0 : 4)
                         }
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            if placement != .inline, let sub = item.subtitle ?? (item.isLive ? String(localized: "Live") : nil) {
-                                Text(sub).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                            }
+                        .frame(width: m.headerHeight - 16, height: m.headerHeight - 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        if !m.compact {
+                            Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1).frame(maxWidth: 220, alignment: .leading)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.ink)
+                            .frame(width: 36, height: 36).contentShape(Rectangle())
+                            .onTapGesture { playback.togglePlayPause() }
                     }
-                    .padding(.leading, 12).padding(.vertical, 6)
-                    .frame(minHeight: 56)
-                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.leading, 8).padding(.trailing, 6)
+                    .frame(height: m.headerHeight)
                 }
-                .buttonStyle(CarFocusButtonStyle(radius: 12))
-                .accessibilityLabel(Text("Now Playing: \(item.title)"))
-                .accessibilityHint(Text("Opens the player"))
-
-                CarCircleButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: 44) { playback.togglePlayPause() }
-                    .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-
-                if placement != .inline {
-                    CarCircleButton(symbol: "forward.end.fill", size: 44, enabled: playback.hasNext) { playback.next() }
-                        .accessibilityLabel("Next")
-                }
+                .buttonStyle(CarFocusButtonStyle())
+                .glassEffect(.regular.tint(Theme.accent.opacity(0.15)).interactive(), in: Capsule())
+                .accessibilityLabel("Now Playing, \(item.title)")
             }
-            .padding(.horizontal, 6).padding(.vertical, 4)
         }
+        .frame(height: m.headerHeight)
     }
 }
 

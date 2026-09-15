@@ -32,22 +32,40 @@ final class VODService {
     // MARK: Load
 
     /// Load from disk immediately, then refresh from the network if stale.
+    ///
+    /// All the heavy work (22 MB download, JSON parse, mapping 12K items) runs on a
+    /// detached background task; only the final `apply` touches the main actor.
+    /// Doing this inline would freeze the UI on "Loading catalogue…" for 10–30 s.
     func loadIfNeeded(force: Bool = false) {
         guard loadTask == nil else { return }
+        let hadMovies = !movies.isEmpty
+        let lastRefreshed = self.lastRefreshed
         loadTask = Task { [weak self] in
             defer { self?.loadTask = nil }
-            guard let self else { return }
-            if movies.isEmpty, let cached = await Self.readCache() {
-                apply(cached)
+
+            // 1. Disk cache → instant shelves.
+            if !hadMovies, let cached = await Self.readCache() {
+                self?.apply(cached)
             }
-            let stale = force || lastRefreshed.map { Date.now.timeIntervalSince($0) > Self.ttl } ?? true
+            guard let self else { return }
+
+            // 2. Refresh if stale.
+            let effectiveLast = self.lastRefreshed ?? lastRefreshed
+            let stale = force || effectiveLast.map { Date.now.timeIntervalSince($0) > Self.ttl } ?? true
             guard stale else { phase = .ready; return }
             if movies.isEmpty { phase = .loading }
-            do {
-                let fresh = try await Self.fetchCatalogue()
+            Log.playlist.info("VOD: fetching catalogue…")
+
+            let result = await Task.detached(priority: .userInitiated) { () -> Result<Catalogue, Error> in
+                do { return .success(try await Self.fetchCatalogue()) } catch { return .failure(error) }
+            }.value
+
+            switch result {
+            case .success(let fresh):
                 apply(fresh)
+                Log.playlist.info("VOD: \(fresh.movies.count) movies, \(fresh.series.count) series")
                 await Self.writeCache(fresh)
-            } catch {
+            case .failure(let error):
                 Log.playlist.error("VOD refresh failed: \(error.localizedDescription)")
                 phase = movies.isEmpty ? .failed(error.localizedDescription) : .ready
             }
