@@ -52,7 +52,6 @@ struct CastView: View {
                     importPhase = .idle
                 }
             }
-            .onAppear(perform: pickUpClipboard)
         }
     }
 
@@ -107,6 +106,15 @@ struct CastView: View {
                 if !linkText.isEmpty {
                     Button { linkText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.inkFaint) }
                         .buttonStyle(.plain)
+                } else {
+                    // System paste control: reads the clipboard only when tapped, and iOS
+                    // shows no "pasted from" banner for it.
+                    PasteButton(payloadType: String.self) { strings in
+                        if let s = strings.first { linkText = s.trimmed }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
                 }
             }
             Button(action: castLink) {
@@ -115,7 +123,7 @@ struct CastView: View {
             .disabled(URL.lenient(linkText) == nil)
             if let linkError { Text(linkError).font(Theme.Font.caption).foregroundStyle(Theme.amber) }
         } header: { Text("Link") } footer: {
-            Text("Copied links are picked up automatically when you open this tab.")
+            Text("Direct video or stream URLs (.mp4, .m3u8, .mkv…).")
         }
     }
 
@@ -148,14 +156,6 @@ struct CastView: View {
         }
     }
 
-    private func pickUpClipboard() {
-        guard linkText.isEmpty, UIPasteboard.general.hasURLs || UIPasteboard.general.hasStrings else { return }
-        if let url = UIPasteboard.general.url ?? UIPasteboard.general.string.flatMap(URL.lenient), url.isHTTP {
-            let ext = url.pathExtension.lowercased()
-            if ["m3u8", "mp4", "mkv", "ts", "mov", "webm", "avi", "m4v"].contains(ext) || url.path.lowercased().contains("/live/") {
-                linkText = url.absoluteString
-            }
-        }
     }
 }
 
