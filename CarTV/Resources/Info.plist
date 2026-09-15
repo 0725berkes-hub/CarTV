@@ -64,7 +64,32 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CarTV imports videos and QR-code images from your photo library.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>CarTV connects to media streams and playlists on your local network.</string>
+	<string>CarTV uses your local network to receive video casts from other apps and to reach playlists and media streams you add.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_cartvcast._tcp</string>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>youtube</string>
+		<string>instagram</string>
+		<string>snssdk1233</string>
+		<string>nflx</string>
+		<string>bilibili</string>
+		<string>vlc</string>
+		<string>infuse</string>
+		<string>plex</string>
+		<string>emby</string>
+		<string>twitch</string>
+		<string>vimeo</string>
+		<string>dailymotion</string>
+		<string>disneyplus</string>
+		<string>hulu</string>
+		<string>aiv</string>
+		<string>hbomax</string>
+		<string>crunchyroll</string>
+		<string>tubitv</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

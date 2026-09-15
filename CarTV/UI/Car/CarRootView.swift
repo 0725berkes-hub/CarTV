@@ -1,12 +1,12 @@
 import SwiftUI
 
 enum CarSection: Hashable, CaseIterable {
-    case home, favorites, library
+    case home, favorites, cast, library
     var title: LocalizedStringResource {
-        switch self { case .home: "Home"; case .favorites: "Favorites"; case .library: "Library" }
+        switch self { case .home: "Home"; case .favorites: "Favorites"; case .cast: "Cast"; case .library: "Library" }
     }
     var symbol: String {
-        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .library: "square.stack.fill" }
+        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
     }
 }
 
@@ -40,12 +40,16 @@ struct CarRootView: View {
         GeometryReader { geo in
             let metrics = CarMetrics(size: geo.size)
             ZStack {
+                CarBackdrop()
                 TabView(selection: $section) {
                     Tab("Home", systemImage: "house.fill", value: .home) {
                         CarNavHost(title: "Home") { CarHomeView() }
                     }
                     Tab("Favorites", systemImage: "heart.fill", value: .favorites) {
                         CarNavHost(title: "Favorites") { CarFavoritesView() }
+                    }
+                    Tab("Cast", systemImage: "tv.badge.wifi", value: .cast) {
+                        CarNavHost(title: "Cast") { CarCastView() }
                     }
                     Tab("Library", systemImage: "square.stack.fill", value: .library) {
                         CarNavHost(title: "Library") { CarLibraryView() }
@@ -56,7 +60,11 @@ struct CarRootView: View {
                 }
                 .tint(Theme.accent)
 
-                if showPlayer {
+                if env.mirror.state == .mirroring {
+                    CarMirrorStage()
+                        .transition(.opacity)
+                        .zIndex(2)
+                } else if showPlayer {
                     CarPlayerView { withAnimation(.easeOut(duration: 0.2)) { showPlayer = false } }
                         .transition(.opacity)
                         .zIndex(1)
@@ -73,6 +81,40 @@ struct CarRootView: View {
             if active, !showPlayer { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
         }
         .onAppear { if playback.isActive { showPlayer = true } }
+    }
+}
+
+/// "< Title" as one wide tap target. Focus ring hugs the pill for knob navigation.
+struct CarBackButton: View {
+    @Environment(\.carMetrics) private var m
+    @Environment(\.isFocused) private var focused
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: m.compact ? 6 : 10) {
+                Image(systemName: "chevron.left").font(.system(size: m.compact ? 15 : 19, weight: .bold))
+                Text(title).font(Theme.Car.title(m.compact ? 16 : 22)).lineLimit(1)
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.leading, m.compact ? 12 : 16).padding(.trailing, m.compact ? 16 : 22)
+            .frame(minHeight: m.compact ? 40 : Theme.Car.minTarget)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(CarPillPressStyle())
+        .accessibilityLabel(Text("Back"))
+    }
+}
+
+private struct CarPillPressStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.22 : 0.10)))
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Theme.accent, lineWidth: focused ? 3 : 0))
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
@@ -97,9 +139,18 @@ struct CarNavHost<Root: View>: View {
                     }
                     .navigationTitle(route.title)
                     .navigationBarTitleDisplayMode(.inline)
+                    // The CarPlay idiom draws the system back button and title as one pill
+                    // but only the chevron is tappable. Replace it with a single button
+                    // that covers the whole "< Title" area.
+                    .navigationBarBackButtonHidden(true)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            CarBackButton(title: route.title) { _ = path.popLast() }
+                        }
+                    }
                 }
         }
-        .background(Theme.ground)
+        .scrollContentBackground(.hidden)
         .environment(\.carPush, CarPush { path.append($0) })
     }
 }
@@ -122,41 +173,45 @@ struct CarNowPlayingAccessory: View {
 
     var body: some View {
         if let item = playback.current {
-            HStack(spacing: 12) {
-                ZStack {
-                    TileTint.gradient(for: item.title)
-                    RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 96, height: 96), contentMode: item.isLocal ? .fill : .fit) {
-                        Monogram(text: item.title, size: 11)
-                    }.padding(item.isLocal ? 0 : 4)
-                }
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            HStack(spacing: 8) {
+                // Artwork + titles are one big "open the player" button. A real Button
+                // (not onTapGesture) so it wins against the siblings and takes knob focus.
+                Button(action: open) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            TileTint.gradient(for: item.title)
+                            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 96, height: 96), contentMode: item.isLocal ? .fill : .fit) {
+                                Monogram(text: item.title, size: 11)
+                            }.padding(item.isLocal ? 0 : 4)
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if placement != .inline, let sub = item.subtitle ?? (item.isLive ? String(localized: "Live") : nil) {
-                        Text(sub).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            if placement != .inline, let sub = item.subtitle ?? (item.isLive ? String(localized: "Live") : nil) {
+                                Text(sub).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.leading, 12).padding(.vertical, 6)
+                    .frame(minHeight: 56)
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(CarFocusButtonStyle(radius: 12))
+                .accessibilityLabel(Text("Now Playing: \(item.title)"))
+                .accessibilityHint(Text("Opens the player"))
 
-                Button { playback.togglePlayPause() } label: {
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                }
-                .font(.title3).frame(width: 44, height: 44)
-                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+                CarCircleButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: 44) { playback.togglePlayPause() }
+                    .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
 
                 if placement != .inline {
-                    Button { playback.next() } label: { Image(systemName: "forward.fill") }
-                        .font(.title3).frame(width: 44, height: 44)
-                        .disabled(!playback.hasNext)
+                    CarCircleButton(symbol: "forward.end.fill", size: 44, enabled: playback.hasNext) { playback.next() }
+                        .accessibilityLabel("Next")
                 }
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: open)
-            .accessibilityAddTraits(.isButton)
+            .padding(.horizontal, 6).padding(.vertical, 4)
         }
     }
 }
@@ -164,14 +219,20 @@ struct CarNowPlayingAccessory: View {
 /// Press scale + focus ring for knob/touchpad cars, on rectangular targets.
 struct CarFocusButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
+    var radius: CGFloat = Theme.radiusS
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .background {
+                // Visible press so touch feels acknowledged even on tiles with their own art.
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.white.opacity(configuration.isPressed ? 0.12 : 0))
+            }
             .overlay {
                 if focused {
-                    RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous).strokeBorder(Theme.accent, lineWidth: 3)
+                    RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Theme.accent, lineWidth: 3)
                 }
             }
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

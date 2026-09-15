@@ -18,6 +18,8 @@ final class AppEnvironment {
     let carPlay: CarPlayCoordinator
     let health: SourceHealthService
     let settings: AppSettings
+    let cast: CastReceiver
+    let mirror: MirrorReceiver
     let vod: VODService
 
     private(set) var didBootstrap = false
@@ -51,6 +53,8 @@ final class AppEnvironment {
         vod       = VODService()
         playback  = PlaybackController(settings: settings, progress: progress)
         carPlay   = CarPlayCoordinator(playback: playback)
+        cast      = CastReceiver(playback: playback)
+        mirror    = MirrorReceiver()
         playback.siblingsProvider = { [library] item in library.siblings(of: item) }
     }
 
@@ -59,6 +63,8 @@ final class AppEnvironment {
         didBootstrap = true
         AudioSessionController.configure()
         playback.attachNowPlaying()
+        cast.start()
+        mirror.start()
         Log.app.info("Bootstrapped. Store at \(AppPaths.applicationSupport.path, privacy: .public)")
     }
 }

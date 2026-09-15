@@ -59,6 +59,9 @@ final class PlaybackController {
     /// True while the car's full-screen player is on screen.
     var isCarPlayerPresented = false
 
+    /// Screen mirroring is showing on the car (set from MirrorReceiver state).
+    var isMirroring = false
+
     /// Phone-side render view.
     /// - AVPlayer: a second layer mirroring the same player (both screens show video).
     /// - VLC: one drawable. The car is the primary screen — it always wins while its

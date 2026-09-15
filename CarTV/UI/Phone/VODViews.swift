@@ -255,11 +255,11 @@ struct MovieDetailView: View {
 
     private var metaRow: some View {
         HStack(spacing: Theme.s2) {
-            if movie.year.nilIfEmpty != nil { Chip(movie.year) }
-            if let mins = Double(movie.duration), mins > 0 { Chip((mins * 60).clockString) }
-            if movie.rating.nilIfEmpty != nil { Chip("★ \(movie.rating)") }
-            if movie.age.nilIfEmpty != nil { Chip(movie.age) }
-            if !movie.subtitles.isEmpty { Chip("CC", accent: true) }
+            if movie.year.nilIfEmpty != nil { MetaChip(movie.year) }
+            if let mins = Double(movie.duration), mins > 0 { MetaChip((mins * 60).clockString) }
+            if movie.rating.nilIfEmpty != nil { MetaChip("★ \(movie.rating)") }
+            if movie.age.nilIfEmpty != nil { MetaChip(movie.age) }
+            if !movie.subtitles.isEmpty { MetaChip("CC", accent: true) }
         }
     }
 
@@ -325,9 +325,9 @@ struct SeriesDetailView: View {
                 VStack(alignment: .leading, spacing: Theme.s4) {
                     Text(series.title).font(Theme.Font.title).foregroundStyle(Theme.ink)
                     HStack(spacing: Theme.s2) {
-                        if series.rating.nilIfEmpty != nil { Chip("★ \(series.rating)") }
-                        if series.age.nilIfEmpty != nil { Chip(series.age) }
-                        Chip(series.seasons == 1 ? "1 season" : "\(series.seasons) seasons")
+                        if series.rating.nilIfEmpty != nil { MetaChip("★ \(series.rating)") }
+                        if series.age.nilIfEmpty != nil { MetaChip(series.age) }
+                        MetaChip(series.seasons == 1 ? "1 season" : "\(series.seasons) seasons")
                     }
                     if let s = season, s.description.nilIfEmpty != nil {
                         Text(s.description).font(Theme.Font.body).foregroundStyle(Theme.inkMuted).lineSpacing(3)
@@ -437,7 +437,7 @@ private struct EpisodeRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Episode \(episode.number)").font(Theme.Font.callout.weight(.semibold)).foregroundStyle(Theme.ink)
                     HStack(spacing: 6) {
-                        if !episode.subtitles.isEmpty { Chip("CC", accent: true, small: true) }
+                        if !episode.subtitles.isEmpty { MetaChip("CC", accent: true, small: true) }
                         if let progress, progress > 0.02 {
                             ProgressBar(fraction: progress, height: 2).frame(width: 60)
                         }
@@ -455,7 +455,7 @@ private struct EpisodeRow: View {
 
 // MARK: - Bits
 
-private struct Chip: View {
+private struct MetaChip: View {
     let text: String
     var accent = false
     var small = false

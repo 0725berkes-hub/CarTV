@@ -76,17 +76,17 @@ struct CarLibraryView: View {
                 ForEach(playlists) { p in
                     NavigationLink(value: CarRoute.playlist(p)) {
                         CarSourceCard(symbol: "antenna.radiowaves.left.and.right", title: p.name, subtitle: String(localized: "\(p.channelCount) channels"), tint: TileTint.color(for: p.name))
-                    }.buttonStyle(CarFocusButtonStyle())
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
                 ForEach(folders) { f in
                     NavigationLink(value: CarRoute.folder(f)) {
                         CarSourceCard(symbol: "folder.fill", title: f.name, subtitle: String(localized: "\(f.videos.count) videos"), tint: Theme.amber)
-                    }.buttonStyle(CarFocusButtonStyle())
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
                 if !looseVideos.isEmpty {
                     NavigationLink(value: CarRoute.folder(VideoFolder.loose)) {
                         CarSourceCard(symbol: "film.stack.fill", title: String(localized: "Videos"), subtitle: String(localized: "\(looseVideos.count) videos"), tint: Theme.accent)
-                    }.buttonStyle(CarFocusButtonStyle())
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
             }
             .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
@@ -111,11 +111,11 @@ struct CarPlaylistView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
                 NavigationLink(value: CarRoute.genre(playlist, nil)) {
                     CarSourceCard(symbol: "square.grid.2x2.fill", title: String(localized: "All"), subtitle: String(localized: "\(playlist.channelCount) channels"), tint: Theme.accent)
-                }.buttonStyle(CarFocusButtonStyle())
+                }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 ForEach(genres, id: \.0) { g, count in
                     NavigationLink(value: CarRoute.genre(playlist, g)) {
                         CarSourceCard(symbol: g.symbol, title: String(localized: g.title), subtitle: String(localized: "\(count) channels"), tint: g.tint)
-                    }.buttonStyle(CarFocusButtonStyle())
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
             }
             .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
@@ -160,8 +160,10 @@ struct CarShelf<Content: View>: View {
                     NavigationLink(value: seeAll) {
                         HStack(spacing: 3) { Text("See all"); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)) }
                             .font(.system(size: m.compact ? 12 : 14, weight: .semibold)).foregroundStyle(Theme.inkMuted)
-                            .padding(.horizontal, Theme.s2).padding(.vertical, 6)
-                    }.buttonStyle(CarFocusButtonStyle())
+                            .padding(.horizontal, Theme.s3)
+                            .frame(minHeight: m.compact ? 36 : 44)
+                            .contentShape(Capsule())
+                    }.buttonStyle(CarFocusButtonStyle(radius: 100))
                 }
             }
             .padding(.horizontal, m.gutter)
@@ -200,8 +202,9 @@ struct CarGrid: View {
                 .padding(.horizontal, Theme.s4)
                 .frame(height: m.compact ? 52 : Theme.Car.minTarget + 8)
                 .frame(maxWidth: .infinity)
+                .contentShape(Capsule())
             }
-            .buttonStyle(CarFocusButtonStyle())
+            .buttonStyle(CarFocusButtonStyle(radius: 100))
             .glassEffect(.regular.tint(Theme.accent).interactive(), in: Capsule())
             .padding(.horizontal, m.gutter)
             .padding(.bottom, Theme.s2)
@@ -339,8 +342,9 @@ struct CarTileButton: View {
             }
             .if(fixedWidth) { $0.frame(width: item.isLocal ? m.tileWidth * 0.72 : m.tileWidth) }
             .padding(6)
+            .contentShape(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         }
-        .buttonStyle(CarFocusButtonStyle())
+        .buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         .contextMenu {
             Button { env.favorites.toggle(item.ref) } label: {

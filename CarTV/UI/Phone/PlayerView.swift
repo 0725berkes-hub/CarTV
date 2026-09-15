@@ -224,29 +224,34 @@ struct PlayerView: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = scrubbing ? scrubValue : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let track: CGFloat = scrubbing ? 14 : 7
-        let thumbW: CGFloat = scrubbing ? 22 : 14
+        let track: CGFloat = 6
+        let thumbW: CGFloat = 44
+        let thumbH: CGFloat = scrubbing ? 32 : 24
         let font = Theme.Font.caption.monospacedDigit()
         return HStack(spacing: 12) {
             Text(pos.clockString).font(font).foregroundStyle(.white.opacity(0.9)).frame(minWidth: 40, alignment: .trailing)
             GeometryReader { geo in
                 let w = geo.size.width
+                let x = min(max(0, w * fraction - thumbW / 2), w - thumbW)
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.25))
-                    Capsule().fill(.white.opacity(0.15)).frame(width: w * playback.snapshot.bufferedFraction)
-                    Capsule().fill(Theme.accent).frame(width: max(thumbW, w * fraction))
-                    Capsule().fill(.white)
-                        .frame(width: thumbW, height: track + 6)
-                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
-                        .offset(x: min(max(0, w * fraction - thumbW / 2), w - thumbW))
+                    Capsule().fill(.white.opacity(0.28)).frame(height: track)
+                    Capsule().fill(.white.opacity(0.14)).frame(width: w * playback.snapshot.bufferedFraction, height: track)
+                    Capsule().fill(Theme.accent).frame(width: max(thumbW / 2, w * fraction), height: track)
+                    Group {
+                        if scrubbing {
+                            Capsule().fill(.clear).frame(width: thumbW, height: thumbH).glassEffect(.regular.interactive(), in: Capsule())
+                        } else {
+                            Capsule().fill(.white).frame(width: thumbW, height: thumbH).shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                        }
+                    }
+                    .offset(x: x)
                 }
-                .frame(height: track)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in
-                            if !scrubbing { scrubbing = true; hideTask?.cancel(); UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                            if !scrubbing { scrubbing = true; hideTask?.cancel(); UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
                             scrubValue = min(1, max(0, v.location.x / w)) * dur
                         }
                         .onEnded { _ in
@@ -257,9 +262,9 @@ struct PlayerView: View {
                 )
             }
             .frame(height: 44)
-            Text("-" + (dur - pos).clockString).font(font).foregroundStyle(.white.opacity(0.6)).frame(minWidth: 44, alignment: .leading)
+            Text(dur.clockString).font(font).foregroundStyle(.white.opacity(0.6)).frame(minWidth: 40, alignment: .leading)
         }
-        .animation(.spring(duration: 0.22, bounce: 0.1), value: scrubbing)
+        .animation(.spring(duration: 0.2, bounce: 0.15), value: scrubbing)
     }
 
     // MARK: Actions

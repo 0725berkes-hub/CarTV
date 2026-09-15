@@ -124,7 +124,7 @@ final class VODService {
 
     // MARK: Catalogue fetch
 
-    private struct Catalogue: Codable {
+    nonisolated private struct Catalogue: Codable, Sendable {
         var movies: [VODMovie]
         var series: [VODSeries]
         var fetchedAt: Date
@@ -190,8 +190,8 @@ final class VODService {
 
 /// Thin client for the MyTV+ Android API. Responses are plain JSON or the
 /// AES-CBC blob `MyTVService` already decrypts, depending on region.
-enum MyTVAPI {
-    enum Endpoint {
+nonisolated enum MyTVAPI {
+    enum Endpoint: Sendable {
         case movies, series, seasons, episodes
         nonisolated var url: URL {
             switch self {

@@ -9,22 +9,33 @@ struct MiniPlayerBar: View {
 
     var body: some View {
         if let item = playback.current {
-            HStack(spacing: 12) {
-                artwork(item)
-                    .frame(width: 48, height: 48)
+            HStack(spacing: 8) {
+                // Artwork + titles: one real Button that opens the player. A Button (not a
+                // tap gesture on the row) so it never fights the play/next siblings.
+                Button { playback.isPhonePlayerPresented = true } label: {
+                    HStack(spacing: 12) {
+                        artwork(item)
+                            .frame(width: 48, height: 48)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    if placement != .inline, let sub = subtitle(item) {
-                        Text(sub)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                            if placement != .inline, let sub = subtitle(item) {
+                                Text(sub)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.leading, 12).padding(.vertical, 6)
+                    .frame(minHeight: 56)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(Text("Now Playing: \(item.title)"))
+                .accessibilityHint(Text("Opens the player"))
 
                 Button { playback.togglePlayPause() } label: {
                     if playback.snapshot.state == .loading || playback.snapshot.state == .buffering {
@@ -46,12 +57,8 @@ struct MiniPlayerBar: View {
                 }
             }
             .buttonStyle(.plain)
-            .padding(.leading, 16)
-            .padding(.trailing, 8)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-            .onTapGesture { playback.isPhonePlayerPresented = true }
-            .accessibilityAddTraits(.isButton)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
         }
     }
 
