@@ -12,8 +12,11 @@ struct LibraryView: View {
     @Query(sort: [SortDescriptor(\VideoFolder.sortOrder)]) private var folders: [VideoFolder]
     @Query(filter: #Predicate<LocalVideo> { $0.folder == nil }, sort: [SortDescriptor(\LocalVideo.importedAt, order: .reverse)]) private var looseVideos: [LocalVideo]
 
-    @State private var showFilePicker = false
-    @State private var showFolderPicker = false
+    /// One `fileImporter` for both files and folders. Two `.fileImporter` modifiers
+    /// on the same view fight over the presentation: the picker sticks on "Loading"
+    /// and the callback never fires. `picker` selects what the single one asks for.
+    enum FilePicker { case files, folder }
+    @State private var picker: FilePicker?
     @State private var showPhotoPicker = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var importPhase: LocalImporter.Phase = .idle
@@ -41,8 +44,8 @@ struct LibraryView: View {
                     Menu {
                         Button { showAddSource = true } label: { Label("Add Playlist", systemImage: "link.badge.plus") }
                         Divider()
-                        Button { showFilePicker = true } label: { Label("Import Video Files", systemImage: "doc.badge.plus") }
-                        Button { showFolderPicker = true } label: { Label("Import Folder", systemImage: "folder.badge.plus") }
+                        Button { picker = .files } label: { Label("Import Video Files", systemImage: "doc.badge.plus") }
+                        Button { picker = .folder } label: { Label("Import Folder", systemImage: "folder.badge.plus") }
                         Button { showPhotoPicker = true } label: { Label("Import from Photos", systemImage: "photo.on.rectangle.angled") }
                     } label: { Image(systemName: "plus") }
                 }
@@ -60,11 +63,16 @@ struct LibraryView: View {
                 }
             }
             .navigationDestination(for: VideoFolder.self) { FolderDetailView(folder: $0) }
-            .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { importFiles(urls) }
-            }
-            .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-                if case .success(let urls) = result { importFiles(urls) }
+            .fileImporter(
+                isPresented: Binding(get: { picker != nil }, set: { if !$0 { picker = nil } }),
+                allowedContentTypes: picker == .folder ? [.folder] : LocalImporter.videoTypes,
+                allowsMultipleSelection: picker != .folder
+            ) { result in
+                picker = nil
+                switch result {
+                case .success(let urls): importFiles(urls)
+                case .failure(let error): toast = error.localizedDescription
+                }
             }
             .photosPicker(isPresented: $showPhotoPicker, selection: $photoItems, matching: .videos)
             .onChange(of: photoItems) { _, items in
@@ -191,7 +199,7 @@ struct LibraryView: View {
                 }
             }
             if folders.isEmpty && looseVideos.isEmpty {
-                Button { showFilePicker = true } label: {
+                Button { picker = .files } label: {
                     Label("Import Video Files", systemImage: "doc.badge.plus").foregroundStyle(Theme.accent)
                 }
             }

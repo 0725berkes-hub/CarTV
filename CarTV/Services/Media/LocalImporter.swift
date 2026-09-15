@@ -44,6 +44,7 @@ nonisolated final class LocalImporter: Sendable {
     func importFiles(_ urls: [URL], into folderID: UUID?, progress: @escaping @MainActor @Sendable (Phase) -> Void) async -> Summary {
         let scoped = urls.filter { $0.startAccessingSecurityScopedResource() }
         defer { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+        Log.media.info("Import: picker returned \(urls.count) url(s), scoped \(scoped.count)")
 
         var files: [URL] = []
         var folderName: String?
@@ -72,13 +73,16 @@ nonisolated final class LocalImporter: Sendable {
         for (i, file) in files.enumerated() {
             await progress(.importing(done: i, total: files.count, name: file.lastPathComponent))
             // iCloud Drive: the picker may hand us a placeholder that isn't on disk yet.
+            let t0 = Date()
             await Self.ensureDownloaded(file)
+            Log.media.info("Import: \(file.lastPathComponent, privacy: .public) ready in \(Int(Date().timeIntervalSince(t0)))s, copying…")
             let ext = file.pathExtension.lowercased().nilIfEmpty ?? "mp4"
             let id = UUID()
             let relative = "\(id.uuidString).\(ext)"
             let dest = AppPaths.videos.appending(path: relative)
             do {
                 try Self.copyCoordinated(from: file, to: dest)
+                Log.media.info("Import: copied \(file.lastPathComponent, privacy: .public)")
                 staged.append((dest, id, relative, file.deletingPathExtension().lastPathComponent))
             } catch {
                 Log.media.error("Copy failed for \(file.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
