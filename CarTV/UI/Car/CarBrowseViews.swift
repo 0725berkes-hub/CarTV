@@ -40,7 +40,7 @@ struct CarHomeView: View {
                     }
                 }
             }
-            .padding(.vertical, Theme.s2)
+            .padding(.top, Theme.s2)
             .padding(.bottom, m.gutter)
         }
     }
@@ -89,7 +89,7 @@ struct CarLibraryView: View {
                     }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
             }
-            .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
+            .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
         }
         .overlay { if playlists.isEmpty && folders.isEmpty && looseVideos.isEmpty { CarEmptyState(symbol: "square.stack", title: "Your library is empty", message: "Add sources on your iPhone first") } }
     }
@@ -118,7 +118,7 @@ struct CarPlaylistView: View {
                     }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
                 }
             }
-            .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
+            .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
         }
     }
 }
@@ -261,7 +261,7 @@ struct CarGrid: View {
                                 CarTileButton(item: item, queue: items, progress: env.progress.progress(for: item.ref)?.fraction, wide: wide, fixedWidth: false)
                             }
                         }
-                        .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
+                        .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
                     }
                 }
                 if showIndex {

@@ -36,6 +36,11 @@ struct CarRootView: View {
 
     @State private var section: CarSection = .home
     @State private var showPlayer = false
+    @State private var paths: [CarSection: [CarRoute]] = [:]
+
+    private var path: Binding<[CarRoute]> {
+        Binding(get: { paths[section] ?? [] }, set: { paths[section] = $0 })
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -44,18 +49,23 @@ struct CarRootView: View {
                 Theme.ground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    CarTabBar(section: $section, nowPlaying: playback.isActive ? playback.current : nil) {
-                        withAnimation(.easeOut(duration: 0.2)) { showPlayer = true }
-                    }
+                    CarHeader(
+                        section: $section,
+                        route: path.wrappedValue.last,
+                        nowPlaying: playback.isActive ? playback.current : nil,
+                        back: { withAnimation(.easeOut(duration: 0.2)) { _ = path.wrappedValue.popLast() } },
+                        openPlayer: { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
+                    )
                     .padding(.horizontal, metrics.gutter)
-                    .padding(.vertical, Theme.s2)
+                    .padding(.top, Theme.s2)
+                    .padding(.bottom, Theme.s3)
 
                     ZStack {
                         switch section {
-                        case .home:      CarNavHost(title: "Home") { CarHomeView() }
-                        case .favorites: CarNavHost(title: "Favorites") { CarFavoritesView() }
-                        case .cast:      CarNavHost(title: "Cast") { CarCastView() }
-                        case .library:   CarNavHost(title: "Library") { CarLibraryView() }
+                        case .home:      CarNavHost(path: path) { CarHomeView() }
+                        case .favorites: CarNavHost(path: path) { CarFavoritesView() }
+                        case .cast:      CarNavHost(path: path) { CarCastView() }
+                        case .library:   CarNavHost(path: path) { CarLibraryView() }
                         }
                     }
                     .id(section)
@@ -85,27 +95,6 @@ struct CarRootView: View {
     }
 }
 
-/// "< Title" as one wide tap target. Focus ring hugs the pill for knob navigation.
-struct CarBackButton: View {
-    @Environment(\.carMetrics) private var m
-    @Environment(\.isFocused) private var focused
-    let title: String
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: m.compact ? 6 : 10) {
-                Image(systemName: "chevron.left").font(.system(size: m.compact ? 15 : 19, weight: .bold))
-                Text(title).font(Theme.Car.title(m.compact ? 16 : 22)).lineLimit(1)
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.leading, m.compact ? 12 : 16).padding(.trailing, m.compact ? 16 : 22)
-            .frame(minHeight: m.compact ? 40 : Theme.Car.minTarget)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(CarPillPressStyle())
-        .accessibilityLabel(Text("Back"))
-    }
-}
 
 private struct CarPillPressStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
@@ -121,9 +110,8 @@ private struct CarPillPressStyle: ButtonStyle {
 
 /// A `NavigationStack` with the routes the car browse views push.
 struct CarNavHost<Root: View>: View {
-    let title: LocalizedStringResource
+    @Binding var path: [CarRoute]
     @ViewBuilder let root: () -> Root
-    @State private var path: [CarRoute] = []
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -137,21 +125,10 @@ struct CarNavHost<Root: View>: View {
                         case .folder(let f):       CarVideosGridView(folder: f)
                         }
                     }
-                    .navigationTitle(route.title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    // The CarPlay idiom draws the system back button and title as one pill
-                    // but only the chevron is tappable. Replace it with a single button
-                    // that covers the whole "< Title" area.
-                    .navigationBarBackButtonHidden(true)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            CarBackButton(title: route.title) { _ = path.popLast() }
-                        }
-                    }
+                    .toolbar(.hidden, for: .navigationBar)
                 }
         }
         .scrollContentBackground(.hidden)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .environment(\.carPush, CarPush { path.append($0) })
     }
 }
@@ -165,74 +142,124 @@ extension EnvironmentValues {
     var carPush: CarPush { get { self[CarPushKey.self] } set { self[CarPushKey.self] = newValue } }
 }
 
-// MARK: - Tab bar (glass capsule, mirrors the phone's look)
+// MARK: - Header (tabs at root, "‹ Title" when drilled in, Now Playing trailing)
 
-struct CarTabBar: View {
+struct CarHeader: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.carMetrics) private var m
     @Binding var section: CarSection
+    let route: CarRoute?
     let nowPlaying: PlayableItem?
+    let back: () -> Void
     let openPlayer: () -> Void
 
     var body: some View {
-        HStack(spacing: Theme.s2) {
-            GlassEffectContainer(spacing: 4) {
-                HStack(spacing: 4) {
-                    ForEach(CarSection.allCases, id: \.self) { s in
-                        Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: s.symbol).font(.system(size: m.compact ? 13 : 16, weight: .bold))
-                                if section == s || !m.compact {
-                                    Text(s.title).font(.system(size: m.compact ? 12 : 15, weight: .semibold))
-                                }
-                            }
-                            .foregroundStyle(section == s ? Color.black : Theme.ink)
-                            .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
-                            .frame(height: m.headerHeight - 8)
-                            .background(section == s ? Theme.accent : .clear, in: Capsule())
-                            .contentShape(Capsule())
-                        }
-                        .buttonStyle(CarFocusButtonStyle())
+        HStack(spacing: Theme.s3) {
+            if let route {
+                // One control: chevron + title, whole capsule is the target.
+                Button(action: back) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.left").font(.system(size: m.compact ? 15 : 18, weight: .bold))
+                        Text(route.title).font(.system(size: m.compact ? 15 : 18, weight: .semibold, design: .rounded)).lineLimit(1)
                     }
+                    .foregroundStyle(Theme.ink)
+                    .padding(.leading, m.compact ? 12 : 14).padding(.trailing, m.compact ? 16 : 20)
+                    .frame(height: m.headerHeight)
+                    .contentShape(Capsule())
                 }
-                .padding(4)
+                .buttonStyle(CarFocusButtonStyle())
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .accessibilityLabel("Back")
+            } else {
+                GlassEffectContainer(spacing: 4) {
+                    HStack(spacing: 4) {
+                        ForEach(CarSection.allCases, id: \.self) { s in
+                            Button { withAnimation(.snappy(duration: 0.22)) { section = s } } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: s.symbol).font(.system(size: m.compact ? 13 : 16, weight: .bold))
+                                    if section == s || !m.compact {
+                                        Text(s.title).font(.system(size: m.compact ? 12 : 15, weight: .semibold))
+                                    }
+                                }
+                                .foregroundStyle(section == s ? Color.black : Theme.ink)
+                                .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
+                                .frame(height: m.headerHeight - 8)
+                                .background(section == s ? Theme.accent : .clear, in: Capsule())
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(CarFocusButtonStyle())
+                        }
+                    }
+                    .padding(4)
+                }
+                .glassEffect(.regular.interactive(), in: Capsule())
             }
-            .glassEffect(.regular.interactive(), in: Capsule())
 
             Spacer(minLength: 0)
 
             if let item = nowPlaying {
-                Button(action: openPlayer) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            TileTint.gradient(for: item.title)
-                            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 96, height: 96), contentMode: item.isLocal ? .fill : .fit) {
-                                Monogram(text: item.title, size: 11)
-                            }.padding(item.isLocal ? 0 : 4)
-                        }
-                        .frame(width: m.headerHeight - 16, height: m.headerHeight - 16)
-                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                        if !m.compact {
-                            Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1).frame(maxWidth: 220, alignment: .leading)
-                        }
-                        Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.ink)
-                            .frame(width: 36, height: 36).contentShape(Rectangle())
-                            .onTapGesture { playback.togglePlayPause() }
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.inkMuted)
-                            .frame(width: 36, height: 36).contentShape(Rectangle())
-                            .onTapGesture { playback.stop() }
-                    }
-                    .padding(.leading, 8).padding(.trailing, 6)
-                    .frame(height: m.headerHeight)
-                }
-                .buttonStyle(CarFocusButtonStyle())
-                .glassEffect(.regular.tint(Theme.accent.opacity(0.15)).interactive(), in: Capsule())
-                .accessibilityLabel("Now Playing, \(item.title)")
+                CarNowPlayingPill(item: item, open: openPlayer)
             }
         }
         .frame(height: m.headerHeight)
+    }
+}
+
+/// Now Playing: circular artwork with a live equaliser ring, title, play/pause, stop.
+/// Reads like the system's now-playing chip — no square art, no cramped glyphs.
+struct CarNowPlayingPill: View {
+    @Environment(PlaybackController.self) private var playback
+    @Environment(\.carMetrics) private var m
+    let item: PlayableItem
+    let open: () -> Void
+
+    var body: some View {
+        let art = m.headerHeight - 12
+        HStack(spacing: m.compact ? 8 : 12) {
+            Button(action: open) {
+                HStack(spacing: m.compact ? 8 : 12) {
+                    ZStack {
+                        Circle().fill(TileTint.gradient(for: item.title))
+                        RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 120, height: 120), contentMode: .fill) {
+                            Monogram(text: item.title, size: art * 0.36)
+                        }
+                        .frame(width: art, height: art).clipShape(Circle())
+                        Circle().strokeBorder(playback.isPlaying ? Theme.accent : Theme.inkFaint, lineWidth: 2)
+                    }
+                    .frame(width: art, height: art)
+                    if !m.compact {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                            Text(playback.isPlaying ? "Now Playing" : "Paused").font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.inkMuted)
+                        }
+                        .frame(maxWidth: 200, alignment: .leading)
+                    }
+                }
+                .padding(.leading, 6)
+                .frame(height: m.headerHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CarFocusButtonStyle())
+
+            Button { playback.togglePlayPause() } label: {
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: m.compact ? 15 : 17, weight: .bold)).foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44).contentShape(Circle())
+            }
+            .buttonStyle(CarFocusButtonStyle())
+            .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+
+            Button { playback.stop() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: m.compact ? 13 : 15, weight: .bold)).foregroundStyle(Theme.inkMuted)
+                    .frame(width: 44, height: 44).contentShape(Circle())
+            }
+            .buttonStyle(CarFocusButtonStyle())
+            .accessibilityLabel("Stop")
+            .padding(.trailing, 2)
+        }
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .accessibilityElement(children: .contain)
     }
 }
 
