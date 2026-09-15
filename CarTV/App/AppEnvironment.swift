@@ -22,6 +22,7 @@ final class AppEnvironment {
     let cast: CastReceiver
     #endif
     let mirror: MirrorReceiver
+    let youtube: YouTubeService
     let vod: VODService
 
     private(set) var didBootstrap = false
@@ -59,6 +60,7 @@ final class AppEnvironment {
         cast      = CastReceiver(playback: playback)
         #endif
         mirror    = MirrorReceiver()
+        youtube   = YouTubeService()
         playback.siblingsProvider = { [library] item in library.siblings(of: item) }
     }
 

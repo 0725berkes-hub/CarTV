@@ -52,7 +52,7 @@ final class WatchProgress {
 }
 
 nonisolated enum PlayableKind: String, Codable, Sendable {
-    case channel, localVideo, vod
+    case channel, localVideo, vod, youtube
 }
 
 nonisolated struct PlayableRef: Hashable, Codable, Sendable {

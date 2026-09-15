@@ -33,9 +33,13 @@ struct PlayableQuery: EntityQuery, EntityStringQuery {
 
     /// Siri passes what the user said. Match channels first (live TV is the
     /// primary use case in a car), then movies and series, then local videos.
+    /// Generic words ("something", "a song", "music") aren't titles — hand back
+    /// the shuffle entity so the request still does something sensible.
     @MainActor
     func entities(matching string: String) async throws -> [PlayableEntity] {
-        PlayableResolver.search(string, limit: 8)
+        if PlayableResolver.isGenericRequest(string) { return [PlayableResolver.shuffleEntity] }
+        let hits = PlayableResolver.search(string, limit: 8)
+        return hits.isEmpty ? [PlayableResolver.shuffleEntity] : hits
     }
 
     @MainActor
@@ -63,9 +67,9 @@ struct PlayTitleIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard try await PlayableResolver.play(id: target.id) else {
-            return .result(dialog: "I couldn't find that in CarTV.")
+            return .result(dialog: target.id.hasPrefix("shuffle:") ? "You haven't added any videos to CarTV yet." : "I couldn't find that in CarTV.")
         }
-        return .result(dialog: "Playing \(target.title).")
+        return .result(dialog: target.id.hasPrefix("shuffle:") ? "Shuffling your videos." : "Playing \(target.title).")
     }
 }
 
@@ -93,6 +97,79 @@ struct ContinueWatchingIntent: AudioPlaybackIntent {
             }
         }
         return .result(dialog: "Nothing to continue yet.")
+    }
+}
+
+/// "Play something" / "play a video" / "shuffle my videos" → shuffle the local
+/// library (optionally one folder). Live TV and the MyTV catalogue are excluded:
+/// a random channel or a random 2-hour movie isn't what anyone means by that.
+struct ShuffleVideosIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Shuffle Videos"
+    static let description = IntentDescription("Plays a random video from your library, shuffling through the rest.")
+    static let openAppWhenRun = true
+
+    @Parameter(title: "Folder")
+    var folder: VideoFolderEntity?
+
+    static var parameterSummary: some ParameterSummary {
+        When(\.$folder, .hasAnyValue) {
+            Summary("Shuffle videos in \(\.$folder)")
+        } otherwise: {
+            Summary("Shuffle all videos")
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let env = AppEnvironment.shared
+        let origin: PlaybackOrigin = env.playback.carIsConnected ? .car : .phone
+        let videos: [LocalVideo]
+        let where_: String
+        if let folder, let f = env.library.folders().first(where: { $0.id.uuidString == folder.id }) {
+            videos = env.library.localVideos(in: f)
+            where_ = f.name
+        } else {
+            videos = env.library.localVideos()
+            where_ = String(localized: "your library")
+        }
+        guard !videos.isEmpty else {
+            return .result(dialog: folder == nil ? "You haven't added any videos to CarTV yet." : "That folder is empty.")
+        }
+        let pool = videos.map(PlayableItem.init(video:))
+        env.playback.playRandom(from: pool, origin: origin)
+        let count = pool.count
+        return .result(dialog: count == 1 ? "Playing your video." : "Shuffling \(count) videos from \(where_).")
+    }
+}
+
+struct VideoFolderEntity: AppEntity {
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Folder")
+    static let defaultQuery = VideoFolderQuery()
+    let id: String
+    let name: String
+    let count: Int
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(name)", subtitle: "\(count) videos")
+    }
+}
+
+struct VideoFolderQuery: EntityQuery, EntityStringQuery {
+    @MainActor
+    func entities(for identifiers: [String]) async throws -> [VideoFolderEntity] {
+        AppEnvironment.shared.library.folders().filter { identifiers.contains($0.id.uuidString) }.map(Self.entity)
+    }
+    @MainActor
+    func entities(matching string: String) async throws -> [VideoFolderEntity] {
+        let q = string.searchNormalized
+        return AppEnvironment.shared.library.folders().filter { $0.name.searchNormalized.contains(q) }.map(Self.entity)
+    }
+    @MainActor
+    func suggestedEntities() async throws -> [VideoFolderEntity] {
+        AppEnvironment.shared.library.folders().map(Self.entity)
+    }
+    @MainActor
+    private static func entity(_ f: VideoFolder) -> VideoFolderEntity {
+        VideoFolderEntity(id: f.id.uuidString, name: f.name, count: f.videos.count)
     }
 }
 
@@ -136,6 +213,25 @@ struct PreviousItemIntent: AudioPlaybackIntent {
 
 struct CarTVShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        // Vague "play something" style requests → shuffle local videos. Listed first
+        // so they don't get swallowed by the entity matcher below.
+        AppShortcut(intent: ShuffleVideosIntent(), phrases: [
+            "Play something on \(.applicationName)",
+            "Play something in \(.applicationName)",
+            "Play a video on \(.applicationName)",
+            "Play a video in \(.applicationName)",
+            "Play any video on \(.applicationName)",
+            "Play my videos on \(.applicationName)",
+            "Play videos on \(.applicationName)",
+            "Shuffle my videos on \(.applicationName)",
+            "Shuffle videos in \(.applicationName)",
+            "Shuffle \(.applicationName)",
+            "Surprise me on \(.applicationName)",
+            "Play videos from \(\.$folder) on \(.applicationName)",
+            "Shuffle \(\.$folder) on \(.applicationName)",
+            "Play something from \(\.$folder) in \(.applicationName)",
+        ], shortTitle: "Shuffle Videos", systemImageName: "shuffle")
+
         AppShortcut(intent: PlayTitleIntent(), phrases: [
             "Play \(\.$target) on \(.applicationName)",
             "Play \(\.$target) in \(.applicationName)",
@@ -178,6 +274,16 @@ struct CarTVShortcuts: AppShortcutsProvider {
 
 @MainActor
 enum PlayableResolver {
+    /// Pseudo-entity: "Play something" chosen via the title intent shuffles local videos.
+    static let shuffleEntity = PlayableEntity(id: "shuffle:videos", title: String(localized: "Something from my videos"), subtitle: String(localized: "Shuffle"))
+
+    /// "something", "anything", "a song", "some music", "a video", "whatever"…
+    static func isGenericRequest(_ s: String) -> Bool {
+        let q = s.searchNormalized
+        let generic = ["something", "anything", "whatever", "a song", "some music", "music", "a video", "some video", "a movie", "any video", "random", "shuffle"]
+        return generic.contains { q == $0 || q == "\($0)s" }
+    }
+
     static func entity(for item: PlayableItem) -> PlayableEntity? {
         switch item.ref.kind {
         case .channel:    return PlayableEntity(id: "channel:\(item.id.uuidString)", title: item.title, subtitle: item.subtitle)
@@ -193,6 +299,7 @@ enum PlayableResolver {
         let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return nil }
         switch parts[0] {
+        case "shuffle": return shuffleEntity
         case "channel": return UUID(uuidString: parts[1]).flatMap { env.library.channel(id: $0) }.map { PlayableEntity(id: id, title: $0.name, subtitle: $0.groupTitle) }
         case "video":   return UUID(uuidString: parts[1]).flatMap { env.library.localVideo(id: $0) }.map { PlayableEntity(id: id, title: $0.title, subtitle: nil) }
         case "movie":   return env.vod.movie(id: parts[1]).map { PlayableEntity(id: id, title: $0.title, subtitle: $0.year.nilIfEmpty) }
@@ -233,6 +340,10 @@ enum PlayableResolver {
         let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return false }
         switch parts[0] {
+        case "shuffle":
+            let pool = env.library.localVideos().map(PlayableItem.init(video:))
+            guard !pool.isEmpty else { return false }
+            env.playback.playRandom(from: pool, origin: origin)
         case "channel":
             guard let uuid = UUID(uuidString: parts[1]), let c = env.library.channel(id: uuid) else { return false }
             let item = PlayableItem(channel: c, playlistName: c.playlist?.name)

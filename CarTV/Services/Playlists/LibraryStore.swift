@@ -204,6 +204,8 @@ final class LibraryStore {
             return localVideos(in: v.folder).map(PlayableItem.init(video:))
         case .vod:
             return [item]   // the VOD views pass an explicit episode queue
+        case .youtube:
+            return [item]   // YouTube views pass related/playlist queues explicitly
         }
     }
 
