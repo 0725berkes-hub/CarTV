@@ -190,10 +190,10 @@ struct PlayerView: View {
                         if playback.current?.ref.kind == .channel {
                             Button { showChannels = true; hideTask?.cancel() } label: {
                                 Label("Channels", systemImage: "list.bullet.rectangle").font(Theme.Font.caption.weight(.semibold))
-                                    .padding(.horizontal, Theme.s3).padding(.vertical, 7)
-                                    .background(.white.opacity(0.14), in: Capsule()).foregroundStyle(.white)
+                                    .padding(.horizontal, Theme.s3).frame(height: 36).foregroundStyle(.white)
                             }
                             .buttonStyle(.plain)
+                            .glassEffect(.regular.interactive(), in: Capsule())
                         }
                     }
                 }
@@ -272,8 +272,8 @@ struct PlayerView: View {
         Task { try? await Task.sleep(for: .milliseconds(600)); withAnimation { seekFlash = nil } }
     }
     private func close() {
-        // No mini player: closing stops playback unless the car is showing it.
-        if playback.carIsConnected { playback.isPhonePlayerPresented = false } else { playback.stop() }
+        // Playback continues; the mini player under the tab bar brings it back.
+        playback.isPhonePlayerPresented = false
     }
 }
 
@@ -285,11 +285,12 @@ struct ControlButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: 36, height: 36)
+            Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(tint)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .buttonStyle(DiscButtonStyle())
+        .buttonStyle(PressScaleStyle())
+        .glassEffect(.regular.interactive(), in: Circle())
     }
 }
 
@@ -307,23 +308,16 @@ struct BigButton: View {
                 .contentShape(Circle())
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(DiscButtonStyle(prominent: prominent))
+        .buttonStyle(PressScaleStyle())
+        .glassEffect(prominent ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Circle())
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
     }
 }
 
-/// Frosted disc that stays visible over black video, with press feedback.
-struct DiscButtonStyle: ButtonStyle {
-    var prominent = false
+struct PressScaleStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background {
-                Circle().fill(prominent ? Theme.accent : Color.white.opacity(configuration.isPressed ? 0.28 : 0.16))
-                Circle().strokeBorder(Color.white.opacity(prominent ? 0 : 0.22), lineWidth: 1)
-            }
-            .background(.ultraThinMaterial, in: Circle())
-            .shadow(color: .black.opacity(prominent ? 0.35 : 0.25), radius: prominent ? 10 : 6, y: 3)
             .scaleEffect(configuration.isPressed ? 0.92 : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }

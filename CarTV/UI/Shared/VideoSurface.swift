@@ -1,26 +1,28 @@
 import SwiftUI
 import UIKit
 
-/// Car-side surface. AVPlayer: always the primary view. VLC: only while the phone
-/// player is closed (one drawable); otherwise shows artwork + "Playing on iPhone".
+/// Car-side surface. Always shows video; the car is the primary screen.
 struct VideoSurface: View {
     @Environment(PlaybackController.self) private var playback
 
     var body: some View {
-        if let view = playback.carVideoView() {
-            HostedVideoView(view: view, key: "car-\(playback.videoViewRevision)")
-        } else {
-            YieldedSurfaceCard(item: playback.current, text: "Playing on iPhone")
-        }
+        HostedVideoView(view: playback.carVideoView(), key: "car-\(playback.videoViewRevision)")
+            .onAppear { playback.isCarPlayerPresented = true }
+            .onDisappear { playback.isCarPlayerPresented = false }
     }
 }
 
-/// Phone-side surface. Always renders video (AVPlayer mirror, or the single VLC drawable).
+/// Phone-side surface. AVPlayer mirrors; for VLC the phone shows video whenever the
+/// car player isn't on screen, otherwise artwork + "Playing on car".
 struct PhoneVideoSurface: View {
     @Environment(PlaybackController.self) private var playback
 
     var body: some View {
-        HostedVideoView(view: playback.phoneVideoView(), key: "phone-\(playback.videoViewRevision)-\(playback.carIsConnected)")
+        if let view = playback.phoneVideoView() {
+            HostedVideoView(view: view, key: "phone-\(playback.videoViewRevision)-\(playback.carIsConnected)-\(playback.isCarPlayerPresented)")
+        } else {
+            YieldedSurfaceCard(item: playback.current, text: "Playing on your car screen")
+        }
     }
 }
 
@@ -54,7 +56,7 @@ struct YieldedSurfaceCard: View {
                     }
                     .frame(width: 140, height: 140)
                 }
-                Label(text, systemImage: "iphone").font(Theme.Font.headline).foregroundStyle(Theme.ink)
+                Label(text, systemImage: "car.fill").font(Theme.Font.headline).foregroundStyle(Theme.ink)
             }
         }
     }

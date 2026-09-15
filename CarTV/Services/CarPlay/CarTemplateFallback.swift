@@ -44,10 +44,6 @@ final class CarTemplateFallback: NSObject {
 
     private func homeSections() -> [CPListSection] {
         var sections: [CPListSection] = []
-        let recents = env.progress.recentItems(limit: 12)
-        if !recents.isEmpty {
-            sections.append(CPListSection(items: recents.map(listItem), header: String(localized: "History"), sectionIndexTitle: nil))
-        }
         for playlist in env.library.playlists() {
             let items = env.library.channels(in: playlist, limit: 40).map { PlayableItem(channel: $0, playlistName: playlist.name) }
             guard !items.isEmpty else { continue }

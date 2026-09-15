@@ -28,6 +28,10 @@ struct PhoneRootView: View {
                 SettingsView()
             }
         }
+        .tabViewBottomAccessory(isEnabled: playback.isActive) {
+            MiniPlayerBar()
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
         .tint(Theme.accent)
         .preferredColorScheme(settings.appearance.colorScheme)
         .fullScreenCover(isPresented: $playback.isPhonePlayerPresented) {
@@ -89,8 +93,7 @@ struct BannerView: View {
             Text(banner.text).font(Theme.Font.callout).foregroundStyle(Theme.ink).lineLimit(2)
         }
         .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s3)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.hairline))
+        .glassEffect(.regular, in: Capsule())
         .padding(.top, Theme.s2)
         .padding(.horizontal, Theme.s4)
     }

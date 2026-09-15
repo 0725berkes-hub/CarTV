@@ -17,12 +17,6 @@ struct CarHomeView: View {
                 if playlists.isEmpty && videos.isEmpty {
                     CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarTV on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
                 }
-                let cont = env.progress.continueWatching(limit: 10)
-                if !cont.isEmpty {
-                    CarShelf(title: "Continue Watching") {
-                        ForEach(cont, id: \.0.id) { item, p in CarTileButton(item: item, progress: p.fraction) }
-                    }
-                }
                 let favs = env.favorites.favoriteItems()
                 if !favs.isEmpty {
                     CarShelf(title: "Favorites") {
@@ -182,21 +176,122 @@ struct CarShelf<Content: View>: View {
     }
 }
 
+/// Grid for the car. Large tiles (fewer, bigger targets), and when the list is
+/// long an A–Z rail on the trailing edge jumps straight to a letter — the same
+/// gesture people already know from Contacts, and far safer than scrolling 300 rows.
 struct CarGrid: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(PlaybackController.self) private var playback
     @Environment(\.carMetrics) private var m
     let items: [PlayableItem]
     var wide = false
+
+    private var showIndex: Bool { items.count > 24 }
+
+    /// Items sorted by title, grouped by first letter (digits/symbols → "#").
+    private var sections: [(key: String, items: [PlayableItem])] {
+        let sorted = items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        var groups: [String: [PlayableItem]] = [:]
+        for it in sorted { groups[Self.indexKey(for: it.title), default: []].append(it) }
+        return groups.keys.sorted { a, b in
+            if a == "#" { return false }; if b == "#" { return true }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }.map { ($0, groups[$0]!) }
+    }
+
+    nonisolated static func indexKey(for title: String) -> String {
+        guard let c = title.trimmed.first else { return "#" }
+        let s = String(c).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).uppercased()
+        return s.first?.isLetter == true ? s : "#"
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: wide ? m.tileWidth * 0.72 : m.tileWidth), spacing: Theme.s2)], spacing: Theme.s3) {
-                ForEach(items) { item in
-                    CarTileButton(item: item, queue: items, progress: env.progress.progress(for: item.ref)?.fraction, wide: wide, fixedWidth: false)
+        let cols = [GridItem(.adaptive(minimum: wide ? m.tileWidth * 0.8 : m.tileWidth * 1.15), spacing: Theme.s3)]
+        ScrollViewReader { proxy in
+            HStack(spacing: 0) {
+                ScrollView {
+                    if showIndex {
+                        LazyVStack(alignment: .leading, spacing: Theme.s4, pinnedViews: .sectionHeaders) {
+                            ForEach(sections, id: \.key) { section in
+                                Section {
+                                    LazyVGrid(columns: cols, spacing: Theme.s3) {
+                                        ForEach(section.items) { item in
+                                            CarTileButton(item: item, queue: items, progress: env.progress.progress(for: item.ref)?.fraction, wide: wide, fixedWidth: false)
+                                        }
+                                    }
+                                    .padding(.horizontal, m.gutter)
+                                } header: {
+                                    Text(section.key)
+                                        .font(Theme.Car.title(m.compact ? 16 : 22)).foregroundStyle(Theme.inkMuted)
+                                        .padding(.horizontal, m.gutter).padding(.vertical, 4)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Theme.ground.opacity(0.92))
+                                        .id("section-\(section.key)")
+                                }
+                            }
+                        }
+                        .padding(.bottom, m.gutter)
+                    } else {
+                        LazyVGrid(columns: cols, spacing: Theme.s3) {
+                            ForEach(items) { item in
+                                CarTileButton(item: item, queue: items, progress: env.progress.progress(for: item.ref)?.fraction, wide: wide, fixedWidth: false)
+                            }
+                        }
+                        .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
+                    }
+                }
+                if showIndex {
+                    CarIndexRail(keys: sections.map(\.key)) { key in
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo("section-\(key)", anchor: .top) }
+                    }
                 }
             }
-            .padding(.horizontal, m.gutter).padding(.bottom, m.gutter)
         }
         .overlay { if items.isEmpty { CarEmptyState(symbol: "tv", title: "Nothing to show") } }
+    }
+}
+
+/// Trailing-edge letter rail. Tap or drag your finger along it; each letter is a
+/// full-height touch target so it works with a glance.
+struct CarIndexRail: View {
+    @Environment(\.carMetrics) private var m
+    let keys: [String]
+    let jump: (String) -> Void
+    @State private var active: String?
+
+    var body: some View {
+        GeometryReader { geo in
+            let rowH = max(14, min(28, geo.size.height / CGFloat(max(keys.count, 1))))
+            VStack(spacing: 0) {
+                ForEach(keys, id: \.self) { k in
+                    Text(k)
+                        .font(.system(size: m.compact ? 11 : 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(active == k ? Color.black : Theme.accent)
+                        .frame(width: m.compact ? 28 : 36, height: rowH)
+                        .background(active == k ? Theme.accent : .clear, in: Capsule())
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        let idx = Int((v.location.y - (geo.size.height - rowH * CGFloat(keys.count)) / 2) / rowH)
+                        guard keys.indices.contains(idx) else { return }
+                        if active != keys[idx] {
+                            active = keys[idx]
+                            jump(keys[idx])
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        }
+                    }
+                    .onEnded { _ in active = nil }
+            )
+        }
+        .frame(width: m.compact ? 36 : 44)
+        .padding(.trailing, Theme.s1)
+        .glassEffect(.regular, in: Capsule())
+        .padding(.vertical, Theme.s3)
+        .padding(.trailing, Theme.s2)
     }
 }
 

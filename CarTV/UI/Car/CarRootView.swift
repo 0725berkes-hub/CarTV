@@ -51,17 +51,15 @@ struct CarRootView: View {
                 CarTopBar(
                     section: $section,
                     route: stack.last,
-                    back: { withAnimation(.easeOut(duration: 0.18)) { _ = stack.popLast() } }
+                    nowPlaying: playback.isActive ? playback.current : nil,
+                    back: { withAnimation(.easeOut(duration: 0.18)) { _ = stack.popLast() } },
+                    openPlayer: { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
                 )
                 .padding(.horizontal, metrics.gutter)
                 .padding(.top, Theme.s2)
 
                 if showPlayer {
-                    CarPlayerView {
-                        // No "Now Playing" pill to return through: leaving the player stops it.
-                        playback.stop()
-                        showPlayer = false
-                    }
+                    CarPlayerView { withAnimation(.easeOut(duration: 0.2)) { showPlayer = false } }
                         .transition(.opacity)
                         .zIndex(1)
                 }
@@ -71,8 +69,12 @@ struct CarRootView: View {
         }
         .preferredColorScheme(car.contentStyle == .light ? .light : .dark)
         .onChange(of: playback.current?.id) { old, new in
+            // A new item started anywhere (phone or car) → the car shows it.
             if new != nil, old != new { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
             if new == nil { withAnimation { showPlayer = false } }
+        }
+        .onChange(of: playback.isActive) { _, active in
+            if active, !showPlayer { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
         }
         .onAppear { if playback.isActive { showPlayer = true } }
         .onChange(of: section) { _, _ in stack = [] }
@@ -107,9 +109,12 @@ extension EnvironmentValues {
 /// One glass capsule: [back + title] when drilled in, otherwise the three tabs.
 struct CarTopBar: View {
     @Environment(\.carMetrics) private var m
+    @Environment(PlaybackController.self) private var playback
     @Binding var section: CarSection
     let route: CarRoute?
+    let nowPlaying: PlayableItem?
     let back: () -> Void
+    let openPlayer: () -> Void
 
     var body: some View {
         HStack(spacing: Theme.s2) {
@@ -136,6 +141,34 @@ struct CarTopBar: View {
             .glassEffect(.regular, in: Capsule())
 
             Spacer(minLength: 0)
+
+            if let item = nowPlaying {
+                Button(action: openPlayer) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            TileTint.gradient(for: item.title)
+                            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 96, height: 96), contentMode: item.isLocal ? .fill : .fit) {
+                                Monogram(text: item.title, size: 11)
+                            }.padding(item.isLocal ? 0 : 4)
+                        }
+                        .frame(width: m.headerHeight - 14, height: m.headerHeight - 14)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        if !m.compact {
+                            Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1).frame(maxWidth: 200, alignment: .leading)
+                        }
+                        Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.ink)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                            .onTapGesture { playback.togglePlayPause() }
+                    }
+                    .padding(.leading, 7).padding(.trailing, 6)
+                    .frame(height: m.headerHeight)
+                }
+                .buttonStyle(CarFocusButtonStyle())
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .accessibilityLabel("Now Playing, \(item.title)")
+            }
         }
         .frame(height: m.headerHeight)
     }

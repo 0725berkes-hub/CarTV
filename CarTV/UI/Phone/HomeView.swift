@@ -65,7 +65,6 @@ struct HomeView: View {
     private var feed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.s6) {
-                ContinueWatchingShelf()
                 FavoritesShelf()
 
                 if !localVideos.isEmpty {
@@ -178,31 +177,6 @@ struct HomeSection<Content: View>: View {
 
 // MARK: - Shelves
 
-struct ContinueWatchingShelf: View {
-    @Environment(AppEnvironment.self) private var env
-    @Environment(PlaybackController.self) private var playback
-    var body: some View {
-        let _ = env.progress.revision
-        let items = env.progress.continueWatching()
-        if !items.isEmpty {
-            HomeSection(title: "Continue Watching", symbol: "play.circle.fill") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: Theme.s3) {
-                        ForEach(items, id: \.0.id) { item, progress in
-                            Button { playback.play(item, queue: nil, origin: .phone) } label: {
-                                VideoCard(item: item, progress: progress.fraction, isFavorite: env.favorites.isFavorite(item)).frame(width: 200)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu { ItemContextMenu(item: item) }
-                        }
-                    }
-                    .padding(.horizontal, Theme.s4)
-                }
-            }
-        }
-    }
-}
-
 struct FavoritesShelf: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
@@ -314,9 +288,6 @@ struct ItemContextMenu: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             Label(fav ? "Remove Favorite" : "Add to Favorites", systemImage: fav ? "heart.slash" : "heart")
-        }
-        if env.progress.progress(for: item.ref) != nil {
-            Button(role: .destructive) { env.progress.remove(item.ref) } label: { Label("Remove from History", systemImage: "clock.arrow.circlepath") }
         }
         if !item.isLocal {
             Button { UIPasteboard.general.url = item.url } label: { Label("Copy Stream URL", systemImage: "link") }

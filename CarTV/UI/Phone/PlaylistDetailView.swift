@@ -141,25 +141,54 @@ struct LocalVideosGridView: View {
         }
     }
 
+    /// When sorted by name with many videos, group by first letter with sticky headers
+    /// so a long library is scannable, like Contacts.
+    private var grouped: [(key: String, videos: [LocalVideo])] {
+        let list = sorted
+        guard sort == .name, list.count > 24 else { return [("", list)] }
+        var groups: [String: [LocalVideo]] = [:]
+        for v in list { groups[CarGrid.indexKey(for: v.title), default: []].append(v) }
+        return groups.keys.sorted { a, b in
+            if a == "#" { return false }; if b == "#" { return true }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }.map { ($0, groups[$0]!) }
+    }
+
     var body: some View {
         let list = sorted
         let items = list.map(PlayableItem.init(video:))
+        let cols = [GridItem(.adaptive(minimum: 104), spacing: Theme.s2)]
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: Theme.s2)], spacing: Theme.s3) {
-                ForEach(Array(zip(list, items)), id: \.1.id) { video, item in
-                    Button { playback.play(item, queue: items, origin: .phone) } label: {
-                        VideoThumbCell(item: item, progress: env.progress.progress(for: item.ref)?.fraction, isFavorite: env.favorites.isFavorite(item))
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        ItemContextMenu(item: item)
-                        Divider()
-                        Button { renameText = video.title; renaming = video } label: { Label("Rename", systemImage: "pencil") }
-                        Button(role: .destructive) { env.library.delete(video) } label: { Label("Delete", systemImage: "trash") }
+            LazyVStack(alignment: .leading, spacing: Theme.s4, pinnedViews: .sectionHeaders) {
+                ForEach(grouped, id: \.key) { group in
+                    Section {
+                        LazyVGrid(columns: cols, spacing: Theme.s3) {
+                            ForEach(group.videos) { video in
+                                let item = PlayableItem(video: video)
+                                Button { playback.play(item, queue: items, origin: .phone) } label: {
+                                    VideoThumbCell(item: item, progress: env.progress.progress(for: item.ref)?.fraction, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    ItemContextMenu(item: item)
+                                    Divider()
+                                    Button { renameText = video.title; renaming = video } label: { Label("Rename", systemImage: "pencil") }
+                                    Button(role: .destructive) { env.library.delete(video) } label: { Label("Delete", systemImage: "trash") }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Theme.s4)
+                    } header: {
+                        if !group.key.isEmpty {
+                            Text(group.key).font(Theme.Font.title2).foregroundStyle(Theme.inkMuted)
+                                .padding(.horizontal, Theme.s4).padding(.vertical, 4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Theme.ground.opacity(0.94))
+                        }
                     }
                 }
             }
-            .padding(Theme.s4)
+            .padding(.top, Theme.s2)
             .padding(.bottom, Theme.s10)
         }
         .background(Theme.ground.ignoresSafeArea())

@@ -4,7 +4,6 @@ struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(AppSettings.self) private var settings
     @Environment(PlaybackController.self) private var playback
-    @State private var showClearConfirm = false
     @State private var cacheCleared = false
 
     private var version: String {
@@ -69,7 +68,6 @@ struct SettingsView: View {
                     Button { ImageLoader.shared.clearDisk(); cacheCleared = true } label: {
                         Label(cacheCleared ? "Cache cleared" : "Clear image cache", systemImage: "trash")
                     }.disabled(cacheCleared)
-                    Button(role: .destructive) { showClearConfirm = true } label: { Label("Clear watch history", systemImage: "clock.arrow.circlepath") }
                 }
 
                 Section("About") {
@@ -81,9 +79,6 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
             .navigationTitle("Settings")
-            .confirmationDialog("Clear watch history?", isPresented: $showClearConfirm, titleVisibility: .visible) {
-                Button("Clear", role: .destructive) { env.progress.clearHistory() }
-            }
         }
     }
 

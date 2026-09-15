@@ -172,7 +172,7 @@ struct LibraryView: View {
                 Text("\(done)/\(total) · \(name)").font(Theme.Font.caption).foregroundStyle(Theme.inkMuted).lineLimit(1)
             }
             .padding(Theme.s3)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
             .padding(Theme.s4)
         }
     }

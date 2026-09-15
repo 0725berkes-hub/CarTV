@@ -24,7 +24,12 @@ final class PlaybackController {
     var isPhonePlayerPresented = false
     var phoneIsForeground = true
     var carIsConnected = false {
-        didSet { if carIsConnected != oldValue { onCarConnectionChanged?(carIsConnected) } }
+        didSet {
+            if carIsConnected != oldValue {
+                if !carIsConnected { isCarPlayerPresented = false }
+                onCarConnectionChanged?(carIsConnected)
+            }
+        }
     }
     var onCarConnectionChanged: ((Bool) -> Void)?
     /// Bumped whenever `videoView` should be re-hosted (engine switch).
@@ -41,20 +46,21 @@ final class PlaybackController {
 
     var videoView: UIView { engine.videoView }
 
+    /// True while the car's full-screen player is on screen.
+    var isCarPlayerPresented = false
+
     /// Phone-side render view.
     /// - AVPlayer: a second layer mirroring the same player (both screens show video).
-    /// - VLC: one drawable only, so it follows attention — the phone gets it while the
-    ///   full-screen phone player is open; the car gets it otherwise. Never a placeholder.
-    func phoneVideoView() -> UIView {
+    /// - VLC: one drawable. The car is the primary screen — it always wins while its
+    ///   player is visible; the phone gets the drawable only when the car isn't showing it.
+    func phoneVideoView() -> UIView? {
         if !carIsConnected { return engine.videoView }
-        return engine.makeMirrorView() ?? engine.videoView
+        if engine.makeMirrorViewSupported { return engine.makeMirrorView() }
+        return isCarPlayerPresented ? nil : engine.videoView
     }
 
-    /// Car-side render view. For VLC, yields to the phone while the phone player is open.
-    func carVideoView() -> UIView? {
-        if engine.makeMirrorViewSupported { return engine.videoView }
-        return isPhonePlayerPresented ? nil : engine.videoView
-    }
+    /// Car-side render view — never nil. The car always shows video.
+    func carVideoView() -> UIView { engine.videoView }
 
     // MARK: Dependencies
 

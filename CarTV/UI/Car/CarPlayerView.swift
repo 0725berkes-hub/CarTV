@@ -15,16 +15,16 @@ struct CarPlayerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var drawerOpen = false
 
-    private var small: CGFloat { m.compact ? 36 : 48 }
-    private var mid: CGFloat { m.compact ? 44 : 60 }
-    private var big: CGFloat { m.compact ? 58 : 80 }
+    private var small: CGFloat { m.compact ? 44 : 52 }
+    private var mid: CGFloat { m.compact ? 52 : 68 }
+    private var big: CGFloat { m.compact ? 68 : 92 }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             if car.supportsVideoPlayback {
-                VideoSurface().id("\(playback.videoViewRevision)-\(playback.isPhonePlayerPresented)").ignoresSafeArea()
+                VideoSurface().id(playback.videoViewRevision).ignoresSafeArea()
             } else {
                 AudioOnlyStage(item: playback.current)
             }
@@ -89,17 +89,21 @@ struct CarPlayerView: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    if let item = playback.current {
-                        CarCircleButton(symbol: env.favorites.isFavorite(item) ? "heart.fill" : "heart", size: small,
-                                        tint: env.favorites.isFavorite(item) ? Theme.live : .white) {
-                            env.favorites.toggle(item.ref); bump()
-                        }
-                    }
-                    CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
-                    if playback.current?.ref.kind == .channel {
-                        CarCircleButton(symbol: "list.bullet.rectangle.fill", size: small) {
-                            withAnimation(.spring(duration: 0.3)) { drawerOpen.toggle() }
-                            hideTask?.cancel()
+                    GlassEffectContainer(spacing: 8) {
+                        HStack(spacing: 8) {
+                            if let item = playback.current {
+                                CarCircleButton(symbol: env.favorites.isFavorite(item) ? "heart.fill" : "heart", size: small,
+                                                tint: env.favorites.isFavorite(item) ? Theme.live : .white) {
+                                    env.favorites.toggle(item.ref); bump()
+                                }
+                            }
+                            CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
+                            if playback.current?.ref.kind == .channel {
+                                CarCircleButton(symbol: "list.bullet.rectangle.fill", size: small) {
+                                    withAnimation(.spring(duration: 0.3)) { drawerOpen.toggle() }
+                                    hideTask?.cancel()
+                                }
+                            }
                         }
                     }
                 }
@@ -107,20 +111,22 @@ struct CarPlayerView: View {
 
                 Spacer(minLength: 0)
 
-                // Transport
-                HStack(spacing: m.compact ? Theme.s3 : Theme.s5) {
-                    if playback.hasPrevious || playback.hasNext {
-                        CarCircleButton(symbol: "backward.end.fill", size: small, enabled: playback.hasPrevious) { playback.previous(); bump() }
-                    }
-                    if playback.snapshot.isSeekable {
-                        CarCircleButton(symbol: "gobackward.15", size: mid) { playback.skip(by: -15); bump() }
-                    }
-                    CarCircleButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: big, prominent: true) { playback.togglePlayPause(); bump() }
-                    if playback.snapshot.isSeekable {
-                        CarCircleButton(symbol: "goforward.15", size: mid) { playback.skip(by: 15); bump() }
-                    }
-                    if playback.hasPrevious || playback.hasNext {
-                        CarCircleButton(symbol: "forward.end.fill", size: small, enabled: playback.hasNext) { playback.next(); bump() }
+                // Transport — one glass cluster, big targets, generous spacing for driving.
+                GlassEffectContainer(spacing: m.compact ? 14 : 20) {
+                    HStack(spacing: m.compact ? 14 : 20) {
+                        if playback.hasPrevious || playback.hasNext {
+                            CarCircleButton(symbol: "backward.end.fill", size: mid, enabled: playback.hasPrevious) { playback.previous(); bump() }
+                        }
+                        if playback.snapshot.isSeekable {
+                            CarCircleButton(symbol: "gobackward.15", size: mid) { playback.skip(by: -15); bump() }
+                        }
+                        CarCircleButton(symbol: playback.isPlaying ? "pause.fill" : "play.fill", size: big, prominent: true) { playback.togglePlayPause(); bump() }
+                        if playback.snapshot.isSeekable {
+                            CarCircleButton(symbol: "goforward.15", size: mid) { playback.skip(by: 15); bump() }
+                        }
+                        if playback.hasPrevious || playback.hasNext {
+                            CarCircleButton(symbol: "forward.end.fill", size: mid, enabled: playback.hasNext) { playback.next(); bump() }
+                        }
                     }
                 }
 
@@ -224,33 +230,25 @@ struct CarCircleButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.38, weight: .semibold))
-                .foregroundStyle(prominent ? .black : tint)
+                .foregroundStyle(prominent ? Color.black : tint)
                 .frame(width: size, height: size)
                 .contentShape(Circle())
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(CarCircleButtonStyle(prominent: prominent))
+        .buttonStyle(CarPressStyle())
+        .glassEffect(prominent ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Circle())
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.3)
+        .accessibilityLabel(Text(symbol.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ")))
     }
 }
 
-/// Press + focus feedback for round car buttons. The focus ring is a circle so it
-/// hugs the glass instead of drawing a square around it.
-struct CarCircleButtonStyle: ButtonStyle {
+/// Press scale + circular focus ring for knob/touchpad cars. Glass is applied by the caller.
+struct CarPressStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
-    var prominent = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background {
-                // Frosted disc that stays visible over black video. Glass alone
-                // disappears on a dark picture; the fill + hairline give it an edge.
-                Circle().fill(prominent ? Theme.accent : Color.white.opacity(configuration.isPressed ? 0.28 : 0.16))
-                Circle().strokeBorder(Color.white.opacity(prominent ? 0 : 0.22), lineWidth: 1)
-            }
-            .background(.ultraThinMaterial, in: Circle())
             .overlay(Circle().strokeBorder(Theme.accent, lineWidth: focused ? 3 : 0))
-            .shadow(color: .black.opacity(prominent ? 0.35 : 0.25), radius: prominent ? 10 : 6, y: 3)
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
@@ -329,7 +327,9 @@ struct CarChannelDrawer: View {
 
 // MARK: - Scrubber (touch + knob)
 
-/// Drag anywhere on the bar to seek. Large hit area for car touchscreens.
+/// Native-feel progress bar sized for a car touchscreen: the whole 56pt row is the
+/// hit area, the track thickens while touched (like iOS's media scrubber), and
+/// times sit at the ends. Drag anywhere to seek; release commits.
 struct CarScrubber: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.carMetrics) private var m
@@ -343,19 +343,18 @@ struct CarScrubber: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = dragging ? dragFraction * dur : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let knob: CGFloat = dragging ? 16 : 10
-        let font = Font.system(size: m.compact ? 10.5 : 12.5, weight: .medium).monospacedDigit()
-        HStack(spacing: m.compact ? 8 : 12) {
-            Text(pos.clockString).font(font).foregroundStyle(.white.opacity(0.9))
+        let track: CGFloat = dragging ? (m.compact ? 16 : 22) : (m.compact ? 8 : 12)
+        let font = Font.system(size: m.compact ? 12 : 15, weight: .semibold).monospacedDigit()
+
+        HStack(spacing: m.compact ? 10 : 14) {
+            Text(pos.clockString).font(font).foregroundStyle(.white).frame(minWidth: m.compact ? 34 : 44, alignment: .trailing)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.25)).frame(height: 3)
-                    Capsule().fill(Theme.accent).frame(width: geo.size.width * fraction, height: 3)
-                    Circle().fill(.white)
-                        .frame(width: knob, height: knob)
-                        .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
-                        .offset(x: geo.size.width * fraction - knob / 2)
+                    Capsule().fill(.white.opacity(0.28))
+                    Capsule().fill(.white.opacity(0.18)).frame(width: geo.size.width * playback.snapshot.bufferedFraction)
+                    Capsule().fill(dragging ? .white : Theme.accent).frame(width: max(track, geo.size.width * fraction))
                 }
+                .frame(height: track)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
@@ -371,9 +370,17 @@ struct CarScrubber: View {
                         }
                 )
             }
-            .frame(height: m.compact ? 24 : 28)   // finger-sized hit area, thin visible track
-            Text(playback.snapshot.duration.clockString).font(font).foregroundStyle(.white.opacity(0.6))
+            .frame(height: 56)
+            Text("-" + (dur - pos).clockString).font(font).foregroundStyle(.white.opacity(0.7)).frame(minWidth: m.compact ? 40 : 52, alignment: .leading)
         }
-        .animation(.easeOut(duration: 0.12), value: dragging)
+        .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
+        .glassEffect(.regular, in: Capsule())
+        .animation(.spring(duration: 0.22, bounce: 0.1), value: dragging)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue(pos.clockString)
+        .accessibilityAdjustableAction { dir in
+            playback.skip(by: dir == .increment ? 15 : -15)
+        }
     }
 }
