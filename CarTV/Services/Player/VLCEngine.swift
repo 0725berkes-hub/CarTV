@@ -12,7 +12,7 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
 
     let videoView: UIView = {
         let v = UIView()
-        v.backgroundColor = .black
+        v.backgroundColor = .clear
         v.isUserInteractionEnabled = false
         return v
     }()

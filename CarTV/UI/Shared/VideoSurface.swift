@@ -11,7 +11,7 @@ struct VideoSurface: View {
             if let view {
                 HostedVideoView(view: view, key: "car-\(playback.videoViewRevision)")
             } else {
-                Color.black
+                Color.clear
             }
         }
         .task(id: playback.videoViewRevision) {
@@ -79,7 +79,7 @@ final class VideoSurfaceContainer: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .black
+        backgroundColor = .clear
         clipsToBounds = true
     }
     required init?(coder: NSCoder) { fatalError() }

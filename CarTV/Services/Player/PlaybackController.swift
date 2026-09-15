@@ -171,6 +171,8 @@ final class PlaybackController {
         if let queue { self.queue = queue } else if !self.queue.contains(where: { $0.id == item.id }) { self.queue = [item] }
         current = item
         onItemChanged?(item)
+        // Shorts are portrait; cropping them to fill a landscape screen loses the picture. Always fit.
+        if item.ref.kind == .tiktok, gravity != .fit { gravity = .fit; engine.setVideoGravity(.fit) }
         attemptedVLC = false
         attemptedYouTubeRefresh = false
         attemptedMyTVRefresh = false

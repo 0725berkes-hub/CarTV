@@ -31,8 +31,9 @@ struct CarPlayerView: View {
                    let art = cur.artworkURL {
                     RemoteImage(url: art, targetSize: CGSize(width: 360, height: 640), contentMode: .fill) { Color.black }
                         .id(cur.id)
-                        .blur(radius: 48).saturation(1.2).opacity(0.7).ignoresSafeArea()
-                        .overlay(Color.black.opacity(0.2).ignoresSafeArea())
+                        .scaleEffect(1.15)                 // hide blur edge bleed
+                        .blur(radius: 40).saturation(1.3).opacity(0.85).ignoresSafeArea()
+                        .overlay(Color.black.opacity(0.15).ignoresSafeArea())
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.35), value: cur.id)
                 }

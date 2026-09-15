@@ -384,7 +384,7 @@ final class PlayerLayerView: UIView {
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .black
+        backgroundColor = .clear   // let the host draw pillars (blurred cover) behind letterboxed video
     }
     required init?(coder: NSCoder) { fatalError() }
 }

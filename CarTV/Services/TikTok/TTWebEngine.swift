@@ -88,7 +88,21 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     @MainActor
     func requestMore() {
         guard let web, isReady else { pendingScrolls += 1; return }
-        web.evaluateJavaScript("window.__cartvScroll && window.__cartvScroll()") { _, _ in }
+        let kind: String
+        switch currentFeed {
+        case .forYou, .following: kind = "fyp"
+        case .profile: kind = "post"
+        case .saved: kind = "saved"
+        case .liked: kind = "liked"
+        }
+        web.evaluateJavaScript("window.__cartvMore ? window.__cartvMore('\(kind)') : 'no-hook'") { [weak self] r, _ in
+            let result = (r as? String) ?? "nil"
+            if result == "no-url" {
+                // Page hasn't fired its first request yet — nudge it.
+                self?.web?.evaluateJavaScript("window.__cartvScroll && window.__cartvScroll()") { _, _ in }
+            }
+            Log.network.debug("TikTok engine: more(\(kind, privacy: .public)) → \(result, privacy: .public)")
+        }
     }
 
     @MainActor
@@ -189,7 +203,7 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
         const res = await _fetch.apply(this, arguments);
         try {
           const u = typeof input === 'string' ? input : (input && input.url) || '';
-          if (wanted(u)) { res.clone().text().then(t => { if (t && t.length > 2) post({ kind: 'items', url: u, body: t }); }); }
+          if (wanted(u)) { remember(u); res.clone().text().then(t => { if (t && t.length > 2) post({ kind: 'items', url: u, body: t }); }); }
         } catch (e) {}
         return res;
       };
@@ -200,8 +214,8 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       const _send = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.send = function () {
         this.addEventListener('load', function () {
-          try { if (wanted(this.__cartvURL || '') && this.responseText && this.responseText.length > 2)
-                  post({ kind: 'items', url: this.__cartvURL, body: this.responseText }); } catch (e) {}
+          try { if (wanted(this.__cartvURL || '')) { remember(this.__cartvURL);
+                  if (this.responseText && this.responseText.length > 2) post({ kind: 'items', url: this.__cartvURL, body: this.responseText }); } } catch (e) {}
         });
         return _send.apply(this, arguments);
       };
@@ -210,43 +224,36 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       // The web FYP snaps one video per step and only fetches more near the end of
       // what it holds. So advance like a user: ArrowDown / wheel, several times, with
       // pauses, until a new item_list lands (or we give up).
-      let advancing = false;
-      // TikTok web renders a "next video" arrow (data-e2e="arrow-right" / class *ButtonBasicButtonContainer* with a down chevron).
-      const nextButton = () =>
-        document.querySelector('[data-e2e="arrow-right"], button[aria-label*="next" i], button[aria-label*="Next" i], [class*="ButtonBasicButtonContainer"]:last-of-type');
-      const feedRoot = () =>
-        document.querySelector('[data-e2e="recommend-list-item-container"]')?.parentElement
-        || document.querySelector('[class*="DivVideoFeedV2"], [class*="DivVideoFeed"], [class*="DivRecommendListContainer"]')
-        || document.scrollingElement;
-      const fireWheel = (el, dy) => {
-        const r = el.getBoundingClientRect();
-        el.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }));
+      // Feed paging. Each /recommend/item_list call returns a fresh batch — no cursor.
+      // The signature is over the query, not the clock, so a URL the page signed stays
+      // valid for minutes. So: remember the last signed URL per endpoint, and when
+      // asked for more, re-fetch it from inside the page (same origin, same cookies)
+      // instead of coaxing the page to scroll. Fresh msToken is substituted each time.
+      window.__cartvLastURL = window.__cartvLastURL || {};
+      const remember = (u) => { try {
+        const k = /recommend\/item_list/.test(u) ? 'fyp' : /post\/item_list/.test(u) ? 'post' : /favorite\/item_list|user\/favorite/.test(u) ? 'liked' : /user\/collect|favorite_item_list/.test(u) ? 'saved' : null;
+        if (k) window.__cartvLastURL[k] = u;
+      } catch (e) {} };
+      const currentMsToken = () => (document.cookie.match(/(?:^|;\s*)msToken=([^;]+)/) || [])[1] || '';
+      let inflight = false;
+      window.__cartvMore = async function (kind) {
+        if (inflight) return 'busy';
+        let u = window.__cartvLastURL[kind || 'fyp'];
+        if (!u) return 'no-url';
+        inflight = true;
+        try {
+          const ms = currentMsToken();
+          if (ms) u = u.replace(/([?&]msToken=)[^&]*/, '$1' + encodeURIComponent(ms));
+          const r = await _fetch(u, { credentials: 'include', headers: { 'accept': 'application/json, text/plain, */*' } });
+          const t = await r.text();
+          if (t && t.length > 2) { post({ kind: 'items', url: u, body: t }); return 'ok:' + t.length; }
+          return 'empty';
+        } catch (e) { return 'err:' + e; } finally { inflight = false; }
       };
+      // Fallback for the very first batch on a fresh page (no URL remembered yet): scroll once.
       window.__cartvScroll = function () {
-        if (advancing) return; advancing = true;
-        const before = window.__cartvCaptures || 0;
-        let steps = 0;
-        const step = () => {
-          steps++;
-          try {
-            const btn = nextButton();
-            if (btn) { btn.click(); }
-            const root = feedRoot();
-            fireWheel(root, 900);                                  // React listens on the feed root
-            fireWheel(document.documentElement, 900);
-            document.activeElement && document.activeElement.blur && document.activeElement.blur();
-            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true }));
-            window.scrollBy({ top: window.innerHeight, behavior: 'instant' });
-          } catch (e) {}
-          const got = (window.__cartvCaptures || 0) > before;
-          if (got || steps >= 20) {
-            advancing = false;
-            post({ kind: 'log', msg: 'advance ' + (got ? 'captured' : 'gave up') + ' after ' + steps + ' (btn=' + !!nextButton() + ')' });
-            return;
-          }
-          setTimeout(step, 300);
-        };
-        step();
+        try { window.scrollBy({ top: window.innerHeight, behavior: 'instant' });
+              document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true })); } catch (e) {}
       };
 
       // Select a profile tab by data-e2e ("favorites" / "liked").
