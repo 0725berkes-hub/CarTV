@@ -12,7 +12,10 @@ import Observation
 /// draw on the car window, so it relays to us.
 ///
 /// Wire format (little-endian): [u32 length][u8 kind][payload]
-///   kind 0 = SPS+PPS (Annex-B), kind 1 = frame (AVCC length-prefixed NALs), kind 2 = heartbeat
+///   kind 0 = SPS+PPS ([u16 len][sps][u16 len][pps]), kind 1 = AVCC frame, 2 = heartbeat
+///
+/// `MirrorReceiver` (main actor) holds UI-observable state; `MirrorPipeline`
+/// (nonisolated, own queue) owns the socket and the decode path and reports back.
 @Observable
 final class MirrorReceiver {
     static let port: UInt16 = 47_311
@@ -23,30 +26,74 @@ final class MirrorReceiver {
     private(set) var fps: Int = 0
 
     let displayView = MirrorDisplayView()
+    private var pipeline: MirrorPipeline?
+    private var pausedForMirror = false
 
+    func start() {
+        guard pipeline == nil else { return }
+        let p = MirrorPipeline(renderer: displayView.displayLayer.sampleBufferRenderer)
+        p.onEvent = { [weak self] event in
+            Task { @MainActor [weak self] in self?.handle(event) }
+        }
+        p.start(port: Self.port)
+        pipeline = p
+    }
+
+    func stop() {
+        pipeline?.stop(); pipeline = nil
+        displayView.displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+        state = .idle
+    }
+
+    private func handle(_ event: MirrorPipeline.Event) {
+        switch event {
+        case .listening: state = .listening
+        case .connected:
+            state = .mirroring
+            let pb = AppEnvironment.shared.playback
+            pausedForMirror = pb.isPlaying
+            pb.isMirroring = true
+            if pb.isPlaying { pb.pause() }
+        case .disconnected:
+            if state == .mirroring { state = .listening }
+            frameSize = .zero
+            displayView.displayLayer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+            let pb = AppEnvironment.shared.playback
+            pb.isMirroring = false
+            if pausedForMirror { pb.resume(); pausedForMirror = false }
+        case .format(let size): frameSize = size
+        case .fps(let n): fps = n
+        case .failed(let msg): state = .error(msg)
+        }
+    }
+}
+
+/// Socket + decode. Everything here runs on `queue`; nothing touches UI.
+nonisolated final class MirrorPipeline: @unchecked Sendable {
+    enum Event: Sendable { case listening, connected, disconnected, format(CGSize), fps(Int), failed(String) }
+    var onEvent: (@Sendable (Event) -> Void)?
+
+    private let renderer: AVSampleBufferVideoRenderer
     private let queue = DispatchQueue(label: "cartv.mirror.rx", qos: .userInteractive)
     private var listener: NWListener?
     private var connection: NWConnection?
     private var formatDesc: CMVideoFormatDescription?
     private var frameCount = 0
     private var fpsTimer: DispatchSourceTimer?
-    private var lastFrameAt: Date = .distantPast
-    private var pausedForMirror = false
 
-    func start() {
-        guard listener == nil else { return }
+    init(renderer: AVSampleBufferVideoRenderer) { self.renderer = renderer }
+
+    func start(port: UInt16) {
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
             params.requiredInterfaceType = .loopback
-            let l = try NWListener(using: params, on: NWEndpoint.Port(rawValue: Self.port)!)
+            let l = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
             l.stateUpdateHandler = { [weak self] st in
-                Task { @MainActor [weak self] in
-                    switch st {
-                    case .ready: self?.state = .listening
-                    case .failed(let e): self?.state = .error(e.localizedDescription)
-                    default: break
-                    }
+                switch st {
+                case .ready: self?.onEvent?(.listening)
+                case .failed(let e): self?.onEvent?(.failed(e.localizedDescription))
+                default: break
                 }
             }
             l.newConnectionHandler = { [weak self] c in self?.attach(c) }
@@ -54,28 +101,27 @@ final class MirrorReceiver {
             listener = l
             startFPS()
         } catch {
-            state = .error(error.localizedDescription)
+            onEvent?(.failed(error.localizedDescription))
         }
     }
 
     func stop() {
-        connection?.cancel(); connection = nil
-        listener?.cancel(); listener = nil
-        fpsTimer?.cancel(); fpsTimer = nil
-        displayView.flush()
-        state = .idle
+        queue.async { [self] in
+            connection?.cancel(); connection = nil
+            listener?.cancel(); listener = nil
+            fpsTimer?.cancel(); fpsTimer = nil
+        }
     }
 
     private func attach(_ c: NWConnection) {
         connection?.cancel()
         connection = c
+        formatDesc = nil
         c.stateUpdateHandler = { [weak self] st in
-            Task { @MainActor [weak self] in
-                switch st {
-                case .ready: self?.state = .mirroring
-                case .cancelled, .failed: if self?.state == .mirroring { self?.state = .listening }; self?.displayView.flush()
-                default: break
-                }
+            switch st {
+            case .ready: self?.onEvent?(.connected)
+            case .cancelled, .failed: self?.onEvent?(.disconnected)
+            default: break
             }
         }
         c.start(queue: queue)
@@ -83,7 +129,7 @@ final class MirrorReceiver {
     }
 
     private func readHeader(_ c: NWConnection) {
-        c.receive(minimumIncompleteLength: 5, maximumLength: 5) { [weak self] data, _, done, err in
+        c.receive(minimumIncompleteLength: 5, maximumLength: 5) { [weak self] data, _, _, err in
             guard let self, let data, data.count == 5, err == nil else { c.cancel(); return }
             let len = data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
             let kind = data[4]
@@ -104,14 +150,16 @@ final class MirrorReceiver {
         }
     }
 
-    // MARK: Decode → display
+    // MARK: Decode → render
 
     private func handleParameterSets(_ data: Data) {
-        // Payload: [u16 spsLen][sps][u16 ppsLen][pps]
+        guard data.count >= 4 else { return }
         var offset = 0
         func read16() -> Int { let v = Int(data[offset]) | Int(data[offset + 1]) << 8; offset += 2; return v }
-        let spsLen = read16(); let sps = data.subdata(in: offset..<offset + spsLen); offset += spsLen
-        let ppsLen = read16(); let pps = data.subdata(in: offset..<offset + ppsLen)
+        let spsLen = read16(); guard data.count >= offset + spsLen + 2 else { return }
+        let sps = data.subdata(in: offset..<offset + spsLen); offset += spsLen
+        let ppsLen = read16(); guard data.count >= offset + ppsLen else { return }
+        let pps = data.subdata(in: offset..<offset + ppsLen)
         sps.withUnsafeBytes { spsPtr in
             pps.withUnsafeBytes { ppsPtr in
                 let sets = [spsPtr.bindMemory(to: UInt8.self).baseAddress!, ppsPtr.bindMemory(to: UInt8.self).baseAddress!]
@@ -120,8 +168,8 @@ final class MirrorReceiver {
                 CMVideoFormatDescriptionCreateFromH264ParameterSets(allocator: nil, parameterSetCount: 2, parameterSetPointers: sets, parameterSetSizes: sizes, nalUnitHeaderLength: 4, formatDescriptionOut: &desc)
                 formatDesc = desc
                 if let desc {
-                    let dims = CMVideoFormatDescriptionGetDimensions(desc)
-                    Task { @MainActor in self.frameSize = CGSize(width: Int(dims.width), height: Int(dims.height)) }
+                    let d = CMVideoFormatDescriptionGetDimensions(desc)
+                    onEvent?(.format(CGSize(width: Int(d.width), height: Int(d.height))))
                 }
             }
         }
@@ -130,10 +178,7 @@ final class MirrorReceiver {
     private func handleFrame(_ data: Data) {
         guard let formatDesc else { return }
         var block: CMBlockBuffer?
-        let status = data.withUnsafeBytes { ptr -> OSStatus in
-            CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0, blockBufferOut: &block)
-        }
-        guard status == noErr, let block else { return }
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: data.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: data.count, flags: 0, blockBufferOut: &block) == noErr, let block else { return }
         _ = data.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: data.count) }
         var sample: CMSampleBuffer?
         var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
@@ -144,7 +189,8 @@ final class MirrorReceiver {
             first[kCMSampleAttachmentKey_DisplayImmediately] = true
         }
         frameCount += 1
-        displayView.enqueue(sample)
+        if renderer.status == .failed { renderer.flush() }
+        if renderer.isReadyForMoreMediaData { renderer.enqueue(sample) }
     }
 
     private func startFPS() {
@@ -153,13 +199,13 @@ final class MirrorReceiver {
         t.setEventHandler { [weak self] in
             guard let self else { return }
             let n = self.frameCount; self.frameCount = 0
-            Task { @MainActor in self.fps = n }
+            self.onEvent?(.fps(n))
         }
         t.resume(); fpsTimer = t
     }
 }
 
-/// UIView backed by AVSampleBufferDisplayLayer. Thread-safe enqueue.
+/// UIView backed by AVSampleBufferDisplayLayer.
 final class MirrorDisplayView: UIView {
     override class var layerClass: AnyClass { AVSampleBufferDisplayLayer.self }
     var displayLayer: AVSampleBufferDisplayLayer { layer as! AVSampleBufferDisplayLayer }
@@ -170,21 +216,4 @@ final class MirrorDisplayView: UIView {
         displayLayer.videoGravity = .resizeAspect
     }
     required init?(coder: NSCoder) { fatalError() }
-
-    nonisolated func enqueue(_ sample: CMSampleBuffer) {
-        MainActor.assumeIsolatedIfNeeded { [self] in
-            if displayLayer.status == .failed { displayLayer.flush() }
-            if displayLayer.isReadyForMoreMediaData { displayLayer.enqueue(sample) }
-        }
-    }
-    nonisolated func flush() {
-        MainActor.assumeIsolatedIfNeeded { [self] in displayLayer.flushAndRemoveImage() }
-    }
-}
-
-extension MainActor {
-    /// Runs synchronously if already on main, else dispatches async. For hot render paths.
-    nonisolated static func assumeIsolatedIfNeeded(_ body: @escaping @MainActor @Sendable () -> Void) {
-        if Thread.isMainThread { MainActor.assumeIsolated { body() } } else { DispatchQueue.main.async { body() } }
-    }
 }
