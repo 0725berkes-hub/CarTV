@@ -17,6 +17,8 @@ struct CarHomeView: View {
                 if playlists.isEmpty && videos.isEmpty {
                     CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarTV on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
                 }
+                CarContinueWatchingShelf()
+
                 let favs = env.favorites.favoriteItems()
                 if !favs.isEmpty {
                     CarShelf(title: "Favorites") {
@@ -72,8 +74,19 @@ struct CarLibraryView: View {
     @Query(filter: #Predicate<LocalVideo> { $0.folder == nil }) private var looseVideos: [LocalVideo]
 
     var body: some View {
+        let _ = env.vod.movies.count
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
+                if env.settings.mytvEnabled {
+                    Button { push(CarRoute.movies) } label: {
+                        CarSourceCard(symbol: "popcorn.fill", title: String(localized: "Movies"),
+                                      subtitle: env.vod.movies.isEmpty ? String(localized: "Loading…") : String(localized: "\(env.vod.movies.count) movies"), tint: Theme.accent)
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
+                    Button { push(CarRoute.series) } label: {
+                        CarSourceCard(symbol: "tv.fill", title: String(localized: "Series"),
+                                      subtitle: env.vod.series.isEmpty ? String(localized: "Loading…") : String(localized: "\(env.vod.series.count) series"), tint: Theme.live)
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
+                }
                 ForEach(playlists) { p in
                     Button { push(CarRoute.playlist(p)) } label: {
                         CarSourceCard(symbol: "antenna.radiowaves.left.and.right", title: p.name, subtitle: String(localized: "\(p.channelCount) channels"), tint: TileTint.color(for: p.name))
@@ -92,7 +105,8 @@ struct CarLibraryView: View {
             }
             .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
         }
-        .overlay { if playlists.isEmpty && folders.isEmpty && looseVideos.isEmpty { CarEmptyState(symbol: "square.stack", title: "Your library is empty", message: "Add sources on your iPhone first") } }
+        .overlay { if playlists.isEmpty && folders.isEmpty && looseVideos.isEmpty && !env.settings.mytvEnabled { CarEmptyState(symbol: "square.stack", title: "Your library is empty", message: "Add sources on your iPhone first") } }
+        .task { if env.settings.mytvEnabled { env.vod.loadIfNeeded() } }
     }
 }
 
@@ -192,43 +206,35 @@ struct CarGrid: View {
 
     private var showIndex: Bool { items.count > 24 }
 
+    /// Compact Play / Shuffle pills, like the header actions in Music and TV.
     @ViewBuilder private var shuffleRow: some View {
         if shuffleable, items.count > 1 {
-            Button { playback.playRandom(from: items, origin: .car) } label: {
-                HStack(spacing: Theme.s3) {
-                    Image(systemName: "shuffle").font(.system(size: m.compact ? 18 : 22, weight: .bold))
-                    Text("Shuffle Play").font(.system(size: m.compact ? 15 : 18, weight: .semibold, design: .rounded))
-                    Spacer(minLength: 0)
-                    Text("\(items.count)").font(.system(size: m.compact ? 12 : 14, weight: .semibold)).monospacedDigit().foregroundStyle(.black.opacity(0.6))
+            HStack(spacing: Theme.s2) {
+                actionPill("play.fill", "Play", prominent: true) {
+                    if let first = items.first { playback.play(first, queue: items, origin: .car) }
                 }
-                .foregroundStyle(.black)
-                .padding(.horizontal, Theme.s4)
-                .frame(height: m.compact ? 52 : Theme.Car.minTarget + 8)
-                .frame(maxWidth: .infinity)
-                .contentShape(Capsule())
+                actionPill("shuffle", "Shuffle", prominent: false) {
+                    playback.playRandom(from: items, origin: .car)
+                }
+                Spacer(minLength: 0)
+                Text("\(items.count) videos").font(.system(size: m.compact ? 12 : 14, weight: .medium)).foregroundStyle(Theme.inkMuted).monospacedDigit()
             }
-            .buttonStyle(CarFocusButtonStyle(radius: 100))
-            .glassEffect(.regular.tint(Theme.accent).interactive(), in: Capsule())
             .padding(.horizontal, m.gutter)
-            .padding(.bottom, Theme.s2)
+            .padding(.bottom, Theme.s3)
         }
     }
 
-    /// Items sorted by title, grouped by first letter (digits/symbols → "#").
-    private var sections: [(key: String, items: [PlayableItem])] {
-        let sorted = items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        var groups: [String: [PlayableItem]] = [:]
-        for it in sorted { groups[Self.indexKey(for: it.title), default: []].append(it) }
-        return groups.keys.sorted { a, b in
-            if a == "#" { return false }; if b == "#" { return true }
-            return a.localizedStandardCompare(b) == .orderedAscending
-        }.map { ($0, groups[$0]!) }
-    }
-
-    nonisolated static func indexKey(for title: String) -> String {
-        guard let c = title.trimmed.first else { return "#" }
-        let s = String(c).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).uppercased()
-        return s.first?.isLetter == true ? s : "#"
+    private func actionPill(_ symbol: String, _ title: LocalizedStringResource, prominent: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: m.compact ? 14 : 16, weight: .semibold))
+                .foregroundStyle(prominent ? Color.black : Theme.ink)
+                .padding(.horizontal, m.compact ? Theme.s4 : Theme.s5)
+                .frame(height: m.compact ? 40 : 44)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(CarPressStyle())
+        .glassEffect(prominent ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Capsule())
     }
 
     var body: some View {
