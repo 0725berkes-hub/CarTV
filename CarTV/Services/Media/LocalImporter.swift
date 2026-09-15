@@ -36,12 +36,18 @@ nonisolated final class LocalImporter: Sendable {
     // MARK: Files app
 
     /// Import security-scoped URLs from a document picker. Folders are walked recursively.
+    ///
+    /// Security scope is held on the *picked* URLs for the whole import. Starting and
+    /// stopping per file (or per loop iteration via `defer`) drops the grant before the
+    /// copy runs; the second `start` then returns false and every copy fails with
+    /// "permission denied" — which looked like an endless spinner with nothing added.
     func importFiles(_ urls: [URL], into folderID: UUID?, progress: @escaping @MainActor @Sendable (Phase) -> Void) async -> Summary {
+        let scoped = urls.filter { $0.startAccessingSecurityScopedResource() }
+        defer { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+
         var files: [URL] = []
         var folderName: String?
         for url in urls {
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
             var isDir: ObjCBool = false
             FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
             if isDir.boolValue {
@@ -58,16 +64,75 @@ nonisolated final class LocalImporter: Sendable {
             targetFolder = await MainActor.run { AppEnvironment.shared.library.createFolder(named: folderName).id }
         }
 
-        var imported = 0, skipped = 0
+        // Stage 1 — copy everything into the container first (fast, I/O-bound). Metadata
+        // and thumbnails come after, so the user sees files land instead of a spinner
+        // that waits on AVFoundation for each one.
+        var staged: [(dest: URL, id: UUID, relative: String, title: String)] = []
+        var skipped = 0
         for (i, file) in files.enumerated() {
             await progress(.importing(done: i, total: files.count, name: file.lastPathComponent))
-            let accessed = file.startAccessingSecurityScopedResource()
-            defer { if accessed { file.stopAccessingSecurityScopedResource() } }
-            if await importOne(source: file, title: file.deletingPathExtension().lastPathComponent, folderID: targetFolder) { imported += 1 } else { skipped += 1 }
+            // iCloud Drive: the picker may hand us a placeholder that isn't on disk yet.
+            await Self.ensureDownloaded(file)
+            let ext = file.pathExtension.lowercased().nilIfEmpty ?? "mp4"
+            let id = UUID()
+            let relative = "\(id.uuidString).\(ext)"
+            let dest = AppPaths.videos.appending(path: relative)
+            do {
+                try Self.copyCoordinated(from: file, to: dest)
+                staged.append((dest, id, relative, file.deletingPathExtension().lastPathComponent))
+            } catch {
+                Log.media.error("Copy failed for \(file.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                skipped += 1
+            }
+        }
+
+        // Stage 2 — metadata + thumbnail + row, a few at a time.
+        var imported = 0
+        await withTaskGroup(of: Bool.self) { group in
+            var it = staged.makeIterator()
+            var inFlight = 0
+            func addNext() {
+                guard let s = it.next() else { return }
+                inFlight += 1
+                group.addTask { await self.record(dest: s.dest, id: s.id, relative: s.relative, title: s.title, folderID: targetFolder) }
+            }
+            for _ in 0..<3 { addNext() }
+            var done = 0
+            for await ok in group {
+                inFlight -= 1
+                done += 1
+                if ok { imported += 1 } else { skipped += 1 }
+                await progress(.importing(done: files.count - staged.count + done, total: files.count, name: String(localized: "Preparing…")))
+                addNext()
+            }
         }
         await progress(.idle)
         await MainActor.run { AppEnvironment.shared.library.bump() }
         return Summary(imported: imported, skipped: skipped)
+    }
+
+    /// Ask iCloud to materialize a placeholder and wait (bounded) for it to land.
+    private static func ensureDownloaded(_ url: URL) async {
+        guard let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
+              let status = values.ubiquitousItemDownloadingStatus, status != .current else { return }
+        try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        for _ in 0..<600 {   // up to 60 s
+            try? await Task.sleep(for: .milliseconds(100))
+            if let v = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]),
+               v.ubiquitousItemDownloadingStatus == .current { return }
+        }
+    }
+
+    /// Copy through NSFileCoordinator so providers (iCloud, third-party File Provider
+    /// extensions) hand us a readable, fully-materialized file.
+    private static func copyCoordinated(from source: URL, to dest: URL) throws {
+        var coordErr: NSError?
+        var copyErr: Error?
+        NSFileCoordinator().coordinate(readingItemAt: source, options: [.withoutChanges], error: &coordErr) { readable in
+            do { try FileManager.default.copyItem(at: readable, to: dest) } catch { copyErr = error }
+        }
+        if let e = coordErr { throw e }
+        if let e = copyErr { throw e }
     }
 
     // MARK: Photos
@@ -100,7 +165,11 @@ nonisolated final class LocalImporter: Sendable {
             Log.media.error("Copy failed for \(source.lastPathComponent, privacy: .public): \(error.localizedDescription)")
             return false
         }
+        return await record(dest: dest, id: id, relative: relative, title: title, folderID: folderID)
+    }
 
+    /// Metadata + thumbnail + SwiftData row for a file already inside the container.
+    private func record(dest: URL, id: UUID, relative: String, title: String, folderID: UUID?) async -> Bool {
         let attrs = try? FileManager.default.attributesOfItem(atPath: dest.path)
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
 
@@ -164,8 +233,17 @@ enum VideoThumbnailer {
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 800, height: 800)
         let t = duration.isFinite && duration > 0 ? min(duration * 0.15, 30) : 1
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 2, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
         do {
-            let (cg, _) = try await gen.image(at: CMTime(seconds: t, preferredTimescale: 600))
+            // A bad file can make AVFoundation sit forever. 8 s is plenty for a keyframe.
+            let cg = try await withThrowingTaskGroup(of: CGImage.self) { group in
+                group.addTask { try await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image }
+                group.addTask { try await Task.sleep(for: .seconds(8)); throw CancellationError() }
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
             let img = UIImage(cgImage: cg)
             guard let data = img.jpegData(compressionQuality: 0.8) else { return nil }
             let rel = "\(id.uuidString).jpg"

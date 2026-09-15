@@ -221,7 +221,11 @@ struct LibraryView: View {
         Task {
             let importer = LocalImporter(container: env.modelContainer)
             let s = await importer.importFiles(urls, into: nil) { importPhase = $0 }
-            toast = s.imported == 0 ? String(localized: "No videos imported") : String(localized: "Imported \(s.imported) videos")
+            toast = switch (s.imported, s.skipped) {
+            case (0, _):      String(localized: "No videos imported — check the files are downloaded and are video files")
+            case (_, 0):      String(localized: "Imported \(s.imported) videos")
+            default:          String(localized: "Imported \(s.imported), skipped \(s.skipped)")
+            }
         }
     }
 
