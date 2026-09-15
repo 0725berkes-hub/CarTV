@@ -68,6 +68,8 @@ enum MyTVService {
     @MainActor
     static func refreshForCurrentNetwork(env: AppEnvironment, force: Bool = false) async {
         guard env.settings.mytvEnabled, let playlist = findPlaylist(in: env) else { return }
+        // Migrate the old display name on an existing install.
+        if playlist.name != playlistName { env.library.rename(playlist, to: playlistName) }
         if let running = refreshTask { await running.value; if !force { return } }
         guard force || Date().timeIntervalSince(lastNetworkRefresh) > 90 else { return }
         lastNetworkRefresh = .now

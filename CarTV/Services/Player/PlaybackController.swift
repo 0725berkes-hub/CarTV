@@ -571,7 +571,7 @@ final class PlaybackController {
                let ch = AppEnvironment.shared.library.channel(id: item.ref.id), ch.playlist?.sourceURL == MyTVService.sourceURL {
                 attemptedMyTVRefresh = true
                 isFallingBack = true
-                Log.player.notice("MyTV+ channel refused; refreshing links and retrying \(item.title, privacy: .public)")
+                Log.player.notice("CarFlix+ channel refused; refreshing links and retrying \(item.title, privacy: .public)")
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     await MyTVService.refreshForCurrentNetwork(env: AppEnvironment.shared, force: true)
