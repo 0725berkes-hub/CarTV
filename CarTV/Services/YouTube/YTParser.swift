@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Converts InnerTube renderer trees into `YTItem`s. YouTube wraps the same data in
 /// a dozen renderer names depending on surface (home vs search vs channel), so we
@@ -157,6 +158,13 @@ nonisolated enum YTParser {
             }
             // A "Mix" tile is a radio playlist; still playable as a video with a playlist context.
             return .video(v)
+        }
+        if title.isEmpty || thumb == nil {
+            // Shape we don't know yet — log a compact outline so it can be added.
+            let keys = (t.raw as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "?"
+            let headerKeys = (header.raw as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "-"
+            let metaKeys = (meta.raw as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "-"
+            Log.network.notice("YT tile unparsed title=\(title.isEmpty ? "EMPTY" : "ok", privacy: .public) thumb=\(thumb == nil ? "nil" : "ok", privacy: .public) keys=[\(keys, privacy: .public)] header=[\(headerKeys, privacy: .public)] meta=[\(metaKeys, privacy: .public)] browse=\(browse["browseId"].string ?? "-", privacy: .public)")
         }
         if let bid = browse["browseId"].string {
             if bid.hasPrefix("UC") {

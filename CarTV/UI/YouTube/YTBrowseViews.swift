@@ -130,29 +130,33 @@ struct YTPlaylistView: View {
     private var videos: [YTVideo] { page?.flatItems.compactMap { if case .video(let v) = $0 { return v } else { return nil } } ?? [] }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Theme.s4) {
-                HStack(spacing: Theme.s2) {
-                    Button { playAll(shuffle: false) } label: { Label("Play all", systemImage: "play.fill").font(.subheadline.weight(.semibold)).frame(height: 40).padding(.horizontal, 8) }
-                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).tint(Theme.accent).foregroundStyle(.black)
-                    Button { playAll(shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle").font(.subheadline.weight(.semibold)).frame(height: 40).padding(.horizontal, 8) }
-                        .buttonStyle(.glass).buttonBorderShape(.capsule)
-                    Spacer()
-                    Text(playlist.videoCountText ?? "").font(.footnote).foregroundStyle(Theme.inkMuted)
-                }
-                .padding(.horizontal, Theme.s4)
-                .disabled(videos.isEmpty)
-
-                ForEach(videos) { v in YTVideoCard(video: v, queue: videos, compact: true).padding(.horizontal, Theme.s4) }
-                if page?.continuation != nil { ProgressView().padding().task { await more() } }
+        // Header lives outside the lazy stack so the cards can never paint over it.
+        VStack(spacing: 0) {
+            HStack(spacing: Theme.s2) {
+                Button { playAll(shuffle: false) } label: { Label("Play all", systemImage: "play.fill").font(.subheadline.weight(.semibold)).frame(height: 40).padding(.horizontal, 8) }
+                    .buttonStyle(.glassProminent).buttonBorderShape(.capsule).tint(Theme.accent).foregroundStyle(.black)
+                Button { playAll(shuffle: true) } label: { Label("Shuffle", systemImage: "shuffle").font(.subheadline.weight(.semibold)).frame(height: 40).padding(.horizontal, 8) }
+                    .buttonStyle(.glass).buttonBorderShape(.capsule)
+                Spacer()
+                Text(playlist.videoCountText ?? "").font(.footnote).foregroundStyle(Theme.inkMuted)
             }
-            .padding(.vertical, Theme.s2).padding(.bottom, Theme.s10)
+            .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s2)
+            .disabled(videos.isEmpty)
+            .zIndex(1)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Theme.s4) {
+                    ForEach(videos) { v in YTVideoCard(video: v, queue: videos, compact: true).padding(.horizontal, Theme.s4) }
+                    if page?.continuation != nil { ProgressView().padding().task { await more() } }
+                }
+                .padding(.vertical, Theme.s2).padding(.bottom, Theme.s10)
+            }
+            .overlay { if page == nil { YTSkeletonFeed() } else if videos.isEmpty { ContentUnavailableView("No videos", systemImage: "play.rectangle.on.rectangle", description: Text("This playlist is empty or private.")) } }
         }
         .background(Theme.ground.ignoresSafeArea())
         .navigationTitle(page?.shelves.first?.title ?? playlist.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { page = try? await env.youtube.fetch(.playlist(playlist.id)) }
-        .overlay { if page == nil { YTSkeletonFeed() } }
     }
 
     private func playAll(shuffle: Bool) {

@@ -202,7 +202,7 @@ struct YTVideoCard: View {
 
     private var compactBody: some View {
         HStack(alignment: .top, spacing: Theme.s3) {
-            thumb.frame(width: 160, height: 90)
+            thumb.frame(width: 160, height: 90).clipShape(RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
                 Text(video.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink).lineLimit(2)
                 Text(video.channelName ?? "").font(.footnote).foregroundStyle(Theme.inkMuted).lineLimit(1)
