@@ -14,6 +14,10 @@ enum MyTVService {
     nonisolated static let playlistName = "MyTV+"
 
     nonisolated private static let api = URL(string: "https://androidapi.appmytv.com/android/v2/channels/getChannelsDetail_local.php")!
+    /// Relay that fetches the catalogue *and* proxies every stream from one fixed IP.
+    /// Used when the carrier blocks the MyTV+ API (Korek does) — direct tokens are
+    /// IP-bound, so a relay must serve both the list and the video.
+    nonisolated private static let relayM3U = URL(string: "https://mytv-web.onrender.com/playlist.m3u")!
     nonisolated private static let userAgent = "And$MyTV"
     nonisolated private static let key = Array("9z_z%C*F-JaNdWgU".utf8)
     nonisolated private static let iv = Array("t2w!W%u&F(J@McWf".utf8)
@@ -46,6 +50,30 @@ enum MyTVService {
         }
     }
 
+    /// Stream tokens are IP-bound and the relay/direct choice depends on the network,
+    /// so the channel list must be refreshed whenever the app comes back to the
+    /// foreground on a possibly different network (Wi‑Fi at home → Korek in the car).
+    @MainActor private static var lastNetworkRefresh: Date = .distantPast
+
+    @MainActor
+    static func refreshForCurrentNetwork(env: AppEnvironment, force: Bool = false) {
+        guard env.settings.mytvEnabled, let playlist = findPlaylist(in: env), !installing else { return }
+        guard force || Date().timeIntervalSince(lastNetworkRefresh) > 90 else { return }
+        lastNetworkRefresh = .now
+        installing = true
+        let id = playlist.id
+        Task {
+            defer { installing = false }
+            do {
+                _ = try await PlaylistImporter(container: env.modelContainer).refresh(id)
+                env.library.bump()
+                Log.playlist.info("MyTV+ refreshed for current network")
+            } catch {
+                Log.playlist.error("MyTV+ refresh failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     @MainActor
     static func uninstall(env: AppEnvironment) {
         guard let playlist = findPlaylist(in: env) else { return }
@@ -59,9 +87,26 @@ enum MyTVService {
 
     // MARK: Fetch + decrypt (off main actor)
 
-    /// Downloads the encrypted catalogue for *this device's IP*, decrypts it, renders M3U.
+    /// Direct API first (best quality, IP-bound tokens); if the network blocks it,
+    /// fall back to the relay playlist so channels still work on Korek.
     nonisolated static func fetchM3U() async throws -> String {
-        var req = URLRequest(url: api, timeoutInterval: 20)
+        do {
+            return try await fetchDirectM3U()
+        } catch {
+            Log.playlist.notice("MyTV+ direct API failed (\(error.localizedDescription, privacy: .public)); using relay")
+            var req = URLRequest(url: relayM3U, timeoutInterval: 40)
+            req.setValue("CarTV", forHTTPHeaderField: "User-Agent")
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+            let text = String(decoding: data, as: UTF8.self)
+            guard text.contains("#EXTINF") else { throw URLError(.cannotParseResponse) }
+            return text
+        }
+    }
+
+    /// Downloads the encrypted catalogue for *this device's IP*, decrypts it, renders M3U.
+    nonisolated private static func fetchDirectM3U() async throws -> String {
+        var req = URLRequest(url: api, timeoutInterval: 12)
         req.httpMethod = "POST"
         req.httpBody = body
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
