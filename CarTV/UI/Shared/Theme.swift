@@ -73,6 +73,20 @@ nonisolated enum Theme {
 }
 
 nonisolated struct CarMetrics: Equatable {
+    /// The car UI is designed at ≥ 800×480 pt. Smaller head units (640×384, 425×255…)
+    /// lay out at that design size and are scaled down as one, so every control,
+    /// label and the player keep their proportions instead of overflowing.
+    static let designSize = CGSize(width: 800, height: 480)
+    static func scale(for size: CGSize) -> CGFloat {
+        guard size.width > 0, size.height > 0 else { return 1 }
+        return min(1, size.width / designSize.width, size.height / designSize.height)
+    }
+    /// Size the UI is laid out at (real size ÷ scale).
+    static func layoutSize(for size: CGSize) -> CGSize {
+        let s = scale(for: size)
+        return CGSize(width: size.width / s, height: size.height / s)
+    }
+
     let railWidth: CGFloat
     let tileWidth: CGFloat
     let gutter: CGFloat

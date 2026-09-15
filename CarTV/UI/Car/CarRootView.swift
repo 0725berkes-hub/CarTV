@@ -59,7 +59,9 @@ struct CarRootView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let metrics = CarMetrics(size: geo.size)
+            let scale = CarMetrics.scale(for: geo.size)
+            let layout = CarMetrics.layoutSize(for: geo.size)
+            let metrics = CarMetrics(size: layout)
             ZStack(alignment: .top) {
                 Theme.ground.ignoresSafeArea()
 
@@ -111,7 +113,12 @@ struct CarRootView: View {
                 }
                 DownloadNoticeBanner(compact: true).zIndex(2)
             }
+            // Small display → lay out at the design size, shrink the whole tree to fit.
+            .frame(width: layout.width, height: layout.height)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .environment(\.carMetrics, metrics)
+            .background(Theme.ground.ignoresSafeArea())
         }
         .preferredColorScheme(settings.appearance.colorScheme ?? (car.contentStyle == .light ? .light : .dark))
         .onChange(of: playback.current?.id) { old, new in
