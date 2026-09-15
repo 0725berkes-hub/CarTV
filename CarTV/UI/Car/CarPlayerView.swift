@@ -14,6 +14,7 @@ struct CarPlayerView: View {
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
     @State private var drawerOpen = false
+    @State private var qualityOpen = false
 
     private var small: CGFloat { m.compact ? 44 : 52 }
     private var mid: CGFloat { m.compact ? 52 : 68 }
@@ -43,6 +44,12 @@ struct CarPlayerView: View {
                 controls
                     .transition(.opacity)
                     .zIndex(1)
+            }
+
+            if qualityOpen {
+                CarQualityPicker { withAnimation(.snappy(duration: 0.25)) { qualityOpen = false }; scheduleHide() }
+                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+                    .zIndex(3)
             }
 
             if drawerOpen {
@@ -101,6 +108,15 @@ struct CarPlayerView: View {
                                 }
                             }
                             CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
+                            if !playback.qualityVariants.isEmpty {
+                                Button { withAnimation(.snappy(duration: 0.25)) { qualityOpen.toggle() }; hideTask?.cancel() } label: {
+                                    Text(playback.qualityLabel).font(.system(size: m.compact ? 12 : 14, weight: .bold)).foregroundStyle(.white)
+                                        .padding(.horizontal, m.compact ? 10 : 14).frame(height: small)
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(CarPressStyle())
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                            }
                             if playback.current?.ref.kind == .localVideo {
                                 CarCircleButton(symbol: "shuffle", size: small, tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); bump() }
                                 CarCircleButton(symbol: playback.repeatMode.symbol, size: small, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); bump() }
@@ -407,5 +423,39 @@ struct CarScrubber: View {
         .accessibilityLabel("Playback position")
         .accessibilityValue(pos.clockString)
         .accessibilityAdjustableAction { dir in playback.skip(by: dir == .increment ? 15 : -15) }
+    }
+}
+
+
+/// Big-target quality chooser for the car. Auto first, then every height.
+struct CarQualityPicker: View {
+    @Environment(PlaybackController.self) private var playback
+    @Environment(\.carMetrics) private var m
+    let close: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35).ignoresSafeArea().onTapGesture(perform: close)
+            VStack(spacing: Theme.s3) {
+                Text("Quality").font(Theme.Car.title(m.compact ? 16 : 20)).foregroundStyle(.white)
+                let opts: [(Int?, String)] = [(nil, String(localized: "Auto"))] + playback.qualityVariants.map { (Optional($0.height), $0.label) }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.s2), count: m.compact ? 3 : 4), spacing: Theme.s2) {
+                    ForEach(opts, id: \.1) { h, label in
+                        let selected = playback.selectedQualityHeight == h
+                        Button { playback.selectedQualityHeight = h; close() } label: {
+                            Text(label).font(.system(size: m.compact ? 15 : 18, weight: .semibold))
+                                .foregroundStyle(selected ? Color.black : .white)
+                                .frame(maxWidth: .infinity).frame(height: m.compact ? 48 : 56)
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(CarPressStyle())
+                        .glassEffect(selected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Capsule())
+                    }
+                }
+            }
+            .padding(m.compact ? Theme.s4 : Theme.s6)
+            .frame(maxWidth: m.compact ? 360 : 520)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
+        }
     }
 }

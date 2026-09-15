@@ -67,6 +67,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         newItem.canUseNetworkResourcesForLiveStreamingWhilePaused = true
         newItem.preferredPeakBitRateForExpensiveNetworks = 0
         newItem.startsOnFirstEligibleVariant = true
+        if let h = maxHeight { newItem.preferredMaximumResolution = CGSize(width: CGFloat(h) * 16 / 9, height: CGFloat(h)) }
         // Live streams need AVPlayer's stall management from the first frame; for
         // VOD we start eagerly and re-enable it once playback begins.
         player.automaticallyWaitsToMinimizeStalling = playable.isLive

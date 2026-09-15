@@ -144,7 +144,9 @@ final class YouTubeService {
     /// Resolves a video into a PlayableItem: HLS (native) → generated HLS → progressive MP4.
     func resolve(_ video: YTVideo) async throws -> Resolved {
         if let c = streamCache[video.id], c.expires > Date() {
-            return Resolved(item: item(for: video, url: c.url), variants: c.variants.map { ($0.0, $0.1) }, captions: [])
+            let r = Resolved(item: item(for: video, url: c.url), variants: c.variants.map { ($0.0, $0.1) }, captions: [])
+            AppEnvironment.shared.playback.pendingQualityVariants = r.variants
+            return r
         }
         let resp = try await api.player(videoID: video.id, accessToken: await auth.token())
         let url: URL
@@ -161,6 +163,7 @@ final class YouTubeService {
             throw YTError.unavailable(resp.playabilityReason ?? String(localized: "No playable streams"))
         }
         streamCache[video.id] = (url, resp.expiresAt, variants)
+        AppEnvironment.shared.playback.pendingQualityVariants = variants.map { ($0.0, $0.1) }
         var enriched = video
         if enriched.title.isEmpty { enriched.title = resp.title }
         if enriched.channelName == nil { enriched.channelName = resp.author }

@@ -68,6 +68,42 @@ final class PlaybackController {
     /// Screen mirroring is showing on the car (set from MirrorReceiver state).
     var isMirroring = false
 
+    // MARK: Quality (HLS variants)
+
+    /// Available variants for the current item (height, label). Empty when the stream
+    /// isn't an HLS master we control (live TV, progressive files).
+    private(set) var qualityVariants: [(height: Int, label: String)] = []
+    /// nil = Auto (adaptive). A value pins that height until the user changes it.
+    var selectedQualityHeight: Int? {
+        didSet {
+            UserDefaults.standard.set(selectedQualityHeight ?? 0, forKey: "playback.quality")
+            applyQuality()
+        }
+    }
+    var qualityLabel: String {
+        guard let h = selectedQualityHeight, let v = qualityVariants.first(where: { $0.height == h }) else { return String(localized: "Auto") }
+        return v.label
+    }
+
+    /// Set by the YouTube resolver just before `play()`; consumed on start.
+    var pendingQualityVariants: [(height: Int, label: String)] = []
+
+    func setQualityVariants(_ v: [(height: Int, label: String)]) {
+        qualityVariants = v.sorted { $0.height > $1.height }
+        applyQuality()
+    }
+
+    private func applyQuality() {
+        // Pinning a height = capping the peak bitrate at that variant's bitrate and
+        // forbidding higher resolutions. Auto = no caps.
+        guard let av = engine as? AVPlayerEngine else { return }
+        if let h = selectedQualityHeight, !qualityVariants.isEmpty {
+            av.setMaxResolution(height: h)
+        } else {
+            av.setMaxResolution(height: nil)
+        }
+    }
+
     /// Bumped whenever surface ownership may change (car connects, car player shows/hides).
     var surfaceRevision: Int { videoViewRevision &* 31 &+ (carIsConnected ? 1 : 0) &+ (isCarPlayerPresented ? 2 : 0) }
 
@@ -109,6 +145,8 @@ final class PlaybackController {
         self.engine = avEngine
         bind(avEngine)
         shuffle = UserDefaults.standard.bool(forKey: "playback.shuffle")
+        let q = UserDefaults.standard.integer(forKey: "playback.quality")
+        selectedQualityHeight = q > 0 ? q : nil
         repeatMode = RepeatMode(rawValue: UserDefaults.standard.string(forKey: "playback.repeat") ?? "") ?? .off
     }
 
@@ -125,6 +163,7 @@ final class PlaybackController {
         attemptedVLC = false
         isFallingBack = false
         lastSavedPosition = 0
+        qualityVariants = []
         snapshot = PlayerSnapshot(state: .loading)
         if origin == .phone { isPhonePlayerPresented = true }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -307,6 +346,7 @@ final class PlaybackController {
         options.softwareDecoding = settings.softwareDecoding
         options.networkCachingMs = item.isLive ? 1000 : 1500
         engine.load(item, startAt: startAt, options: options)
+        if !pendingQualityVariants.isEmpty { setQualityVariants(pendingQualityVariants); pendingQualityVariants = [] } else { applyQuality() }
         Log.player.info("▶︎ \(item.title, privacy: .public) via \(kind.rawValue, privacy: .public)")
     }
 

@@ -158,6 +158,16 @@ struct PlayerView: View {
                         ControlButton(symbol: "shuffle", tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); scheduleHide() }
                         ControlButton(symbol: playback.repeatMode.symbol, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); scheduleHide() }
                     }
+                    if !playback.qualityVariants.isEmpty {
+                        Menu {
+                            QualityMenuItems()
+                        } label: {
+                            Text(playback.qualityLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 10).frame(height: 44)
+                        }
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .onTapGesture { hideTask?.cancel() }
+                    }
                     ControlButton(symbol: "ellipsis") { showTracks = true; hideTask?.cancel() }
                 }
                 .padding(.horizontal, Theme.s3).padding(.top, Theme.s1)
@@ -435,6 +445,9 @@ struct TracksSheet: View {
                         }
                     }
                 }
+                if !playback.qualityVariants.isEmpty {
+                    Section("Quality") { QualityMenuItems() }
+                }
                 Section("Playback") {
                     Toggle("Software decoding", isOn: Binding(get: { settings.softwareDecoding }, set: { settings.softwareDecoding = $0 }))
                     Button { playback.switchEngine() } label: {
@@ -503,6 +516,22 @@ struct ChannelDrawer: View {
             .navigationTitle("Channels")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+
+/// Auto + every available height. Shared by the phone menu and tracks sheet.
+struct QualityMenuItems: View {
+    @Environment(PlaybackController.self) private var playback
+    var body: some View {
+        Button { playback.selectedQualityHeight = nil } label: {
+            HStack { Text("Auto"); if playback.selectedQualityHeight == nil { Spacer(); Image(systemName: "checkmark") } }
+        }
+        ForEach(playback.qualityVariants, id: \.height) { v in
+            Button { playback.selectedQualityHeight = v.height } label: {
+                HStack { Text(v.label); if playback.selectedQualityHeight == v.height { Spacer(); Image(systemName: "checkmark") } }
+            }
         }
     }
 }
