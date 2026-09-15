@@ -601,7 +601,8 @@ final class PlaybackController {
     }
 
     private func persistProgress(force: Bool) {
-        guard let item = current, !item.isLive, snapshot.duration > 0 else { return }
+        // Shorts don't get resume points; they'd flood Continue Watching.
+        guard let item = current, !item.isLive, item.ref.kind != .tiktok, snapshot.duration > 0 else { return }
         guard force || abs(snapshot.position - lastSavedPosition) >= 4 else { return }
         lastSavedPosition = snapshot.position
         progress.record(item.ref, position: snapshot.position, duration: snapshot.duration)
