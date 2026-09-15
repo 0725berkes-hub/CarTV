@@ -171,12 +171,13 @@ nonisolated final class InnerTubeClient: Sendable {
 
     /// A visitor id is what separates "Sign in to confirm you're not a bot" from a
     /// playable response for the visionOS client. Cheap to mint; cached for the session.
-    private var cachedVisitorData: (value: String, at: Date)?
+    private let visitorLock = NSLock()
+    nonisolated(unsafe) private var cachedVisitorData: (value: String, at: Date)?   // guarded by visitorLock
     private func visitorData() async throws -> String {
-        if let c = cachedVisitorData, Date().timeIntervalSince(c.at) < 6 * 3600 { return c.value }
+        if let c = visitorLock.withLock({ cachedVisitorData }), Date().timeIntervalSince(c.at) < 6 * 3600 { return c.value }
         let json = try await call("visitor_id", client: Self.web, body: [:])
         guard let vd = json["responseContext"]["visitorData"].string else { throw YTError.parse("no visitorData") }
-        cachedVisitorData = (vd, .now)
+        visitorLock.withLock { cachedVisitorData = (vd, .now) }
         return vd
     }
 

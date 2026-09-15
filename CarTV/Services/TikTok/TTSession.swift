@@ -38,6 +38,15 @@ final class TTSession {
     var csrf: String { cookies["tt_csrf_token"] ?? "" }
     var odinID: String? { cookies["multi_sids"]?.components(separatedBy: "%3A").first }
 
+    /// Immutable copy the nonisolated client can carry across a request.
+    nonisolated struct Snapshot: Sendable {
+        let cookieHeader: String
+        let msToken: String
+        let odinID: String?
+        let isSignedIn: Bool
+    }
+    var snapshot: Snapshot { Snapshot(cookieHeader: cookieHeader, msToken: msToken, odinID: odinID, isSignedIn: isSignedIn) }
+
     // MARK: Import from the web view
 
     /// Called after the login web view sees `sessionid`. Pulls every `.tiktok.com`

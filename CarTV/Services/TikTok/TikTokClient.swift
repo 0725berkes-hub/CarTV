@@ -86,7 +86,8 @@ nonisolated final class TikTokClient: Sendable {
         let user = (d["userInfo"] as? [String: Any])?["user"] as? [String: Any]
         guard let h = TTParser.str(user?["uniqueId"]) else {
             // Fall back to the odin id from cookies; the feed still works.
-            return (session.odinID ?? "me", "", nil)
+            let odin = await MainActor.run { session.odinID }
+            return (odin ?? "me", "", nil)
         }
         return (h, TTParser.str(user?["nickname"]) ?? h, TTParser.url(user?["avatarMedium"]))
     }
@@ -99,7 +100,8 @@ nonisolated final class TikTokClient: Sendable {
     }
 
     private func get(_ path: String, _ extra: [String: String], allowEmpty: Bool = false) async throws -> [String: Any] {
-        guard session.isSignedIn else { throw Failure.signedOut }
+        let snap = await MainActor.run { session.snapshot }
+        guard snap.isSignedIn else { throw Failure.signedOut }
 
         // The site always sends this long device/browser block; keep it identical.
         var q: [(String, String)] = [
@@ -114,9 +116,9 @@ nonisolated final class TikTokClient: Sendable {
             ("screen_height", "1117"), ("screen_width", "1728"), ("tz_name", "UTC"),
             ("webcast_language", "en"),
         ]
-        if let odin = session.odinID { q.append(("odinId", odin)) }
+        if let odin = snap.odinID { q.append(("odinId", odin)) }
         for (k, v) in extra.sorted(by: { $0.key < $1.key }) { q.append((k, v)) }
-        q.append(("msToken", session.msToken))
+        q.append(("msToken", snap.msToken))
 
         var comps = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
         comps.queryItems = q.map { URLQueryItem(name: $0.0, value: $0.1) }
@@ -125,11 +127,11 @@ nonisolated final class TikTokClient: Sendable {
         comps.percentEncodedQuery = query + "&X-Bogus=" + xb
 
         var req = URLRequest(url: comps.url!)
-        req.setValue(session.cookieHeader, forHTTPHeaderField: "Cookie")
+        req.setValue(snap.cookieHeader, forHTTPHeaderField: "Cookie")
 
         let (data, resp) = try await http.data(for: req)
         guard let hr = resp as? HTTPURLResponse else { throw Failure.parse }
-        session.absorb(hr)
+        await MainActor.run { session.absorb(hr) }
         if hr.statusCode == 429 { throw Failure.rateLimited }
         guard (200..<300).contains(hr.statusCode) else { throw Failure.http(hr.statusCode) }
         if data.isEmpty {
@@ -148,7 +150,7 @@ nonisolated final class TikTokClient: Sendable {
     // MARK: Media headers
 
     /// Headers AVPlayer / the downloader must send for the CDN to serve the MP4 (403 without).
-    var mediaHeaders: [String: String] {
+    @MainActor var mediaHeaders: [String: String] {
         ["User-Agent": TTSession.userAgent, "Referer": "https://www.tiktok.com/", "Cookie": session.cookieHeader]
     }
 }
