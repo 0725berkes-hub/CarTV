@@ -27,7 +27,7 @@ struct OnboardingView: View {
               eyebrow: "LIVE TV", title: "360+ channels,\nready now",
               body: "News, sports, kids, music and movies in Kurdish, Arabic and English — sorted for you. Or add any M3U or Xtream playlist.",
               proof: ["Built-in MyTV+", "One tap to turn on"]),
-        .init(kind: .youtube, tint: Color(red: 1.0, green: 0.30, blue: 0.30),
+        .init(kind: .youtube, tint: Color(red: 1.0, green: 0.0, blue: 0.0),
               eyebrow: "YOUTUBE", title: "YouTube on\nthe dash",
               body: "Your subscriptions, Watch Later and playlists, playable in the car. Sign in with Google to see your feed, or just browse.",
               proof: ["Subscriptions", "Watch Later", "Quality picker"]),
@@ -342,6 +342,7 @@ private struct YouTubeMock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
+                Image("YouTubeMark").resizable().scaledToFit().frame(height: 12)
                 ForEach(["Home", "Subscriptions", "Library"], id: \.self) { g in
                     Text(g).font(.system(size: 8.5, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 3)
@@ -444,7 +445,7 @@ private struct SetupCard: View {
                 SetupSwitch(isOn: $enableMyTV, symbol: "tv.badge.wifi", tint: Theme.accent,
                             title: "MyTV+ channels, movies & series", subtitle: "360+ live · 12K movies · 8K series")
                 Divider().overlay(.white.opacity(0.08)).padding(.horizontal, Theme.s4)
-                SetupSwitch(isOn: $wantsYouTube, symbol: "play.rectangle.fill", tint: Color(red: 1.0, green: 0.30, blue: 0.30),
+                SetupSwitch(isOn: $wantsYouTube, brandImage: "YouTubeMark", tint: Color(red: 1.0, green: 0.0, blue: 0.0),
                             title: "Sign in to YouTube", subtitle: "Subscriptions & Watch Later — optional")
             }
             .padding(.bottom, Theme.s2)
@@ -456,7 +457,8 @@ private struct SetupCard: View {
 
 private struct SetupSwitch: View {
     @Binding var isOn: Bool
-    let symbol: String
+    var symbol: String? = nil
+    var brandImage: String? = nil     // asset name; real third-party mark
     let tint: Color
     let title: LocalizedStringResource
     let subtitle: LocalizedStringResource
@@ -464,8 +466,12 @@ private struct SetupSwitch: View {
         Toggle(isOn: $isOn) {
             HStack(spacing: Theme.s3) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.18)).frame(width: 36, height: 36)
-                    Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(tint)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous).fill(brandImage == nil ? tint.opacity(0.18) : .white).frame(width: 36, height: 36)
+                    if let brandImage {
+                        Image(brandImage).resizable().scaledToFit().frame(width: 22, height: 22)
+                    } else if let symbol {
+                        Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(tint)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)

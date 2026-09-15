@@ -268,12 +268,23 @@ struct YTAccountSheet: View {
                     Text("Waiting for you to approve…").font(.footnote).foregroundStyle(.secondary)
 
                 case .signedOut:
-                    Image(systemName: "play.rectangle.fill").font(.system(size: 64)).foregroundStyle(Theme.live)
-                    Text("Sign in with Google").font(.title2.weight(.semibold))
-                    Text("You'll get a short code to enter on any browser. No password is typed here.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Image("YouTubeMark").resizable().scaledToFit().frame(height: 56)
+                    Text("Your YouTube, in the car").font(.title2.weight(.semibold))
+                    Text("Subscriptions, Watch Later and playlists. You'll get a short code to enter on any browser — no password is typed here.")
+                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     if let e = auth.error { Text(e).font(.footnote).foregroundStyle(Theme.amber) }
-                    Button { auth.beginSignIn() } label: { Text("Get code").frame(maxWidth: .infinity).frame(height: 48) }
-                        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).tint(Theme.accent).foregroundStyle(.black)
+                    // Google's sign-in button spec: white pill, the four-colour G, "Sign in with Google".
+                    Button { auth.beginSignIn() } label: {
+                        HStack(spacing: 10) {
+                            Image("GoogleG").resizable().scaledToFit().frame(width: 20, height: 20)
+                            Text("Sign in with Google").font(.system(size: 16, weight: .medium))
+                        }
+                        .foregroundStyle(Color(red: 0.12, green: 0.12, blue: 0.12))
+                        .frame(maxWidth: .infinity).frame(height: 48)
+                        .background(.white, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.black.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(Theme.s6)
