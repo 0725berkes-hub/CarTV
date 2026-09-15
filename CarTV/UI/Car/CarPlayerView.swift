@@ -48,13 +48,14 @@ struct CarPlayerView: View {
             // Tap the stage to show/hide controls; double-tap left/right skips ±10s
             // (YouTube style). Only the stage — the controls layer below swallows
             // its own taps so buttons never fall through.
+            // No double-tap recognizer on live streams: it would hold every single
+            // tap for ~350 ms before the controls appear.
+            let seekable = playback.snapshot.isSeekable
             HStack(spacing: 0) {
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { doubleTapSkip(-10) }
-                    .onTapGesture { toggleControls() }
+                    .modifier(TapOrDoubleTap(doubleTapEnabled: seekable, onTap: toggleControls, onDoubleTap: { doubleTapSkip(-10) }))
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { doubleTapSkip(10) }
-                    .onTapGesture { toggleControls() }
+                    .modifier(TapOrDoubleTap(doubleTapEnabled: seekable, onTap: toggleControls, onDoubleTap: { doubleTapSkip(10) }))
             }
             .ignoresSafeArea()
             .overlay {

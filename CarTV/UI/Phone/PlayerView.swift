@@ -94,13 +94,15 @@ struct PlayerView: View {
     // MARK: Layers
 
     private var gestureLayer: some View {
-        HStack(spacing: 0) {
+        // A double-tap recognizer makes every single tap wait ~350 ms to rule out a
+        // second tap. Live channels can't skip, so don't install it there — the
+        // controls then appear the instant the finger lifts.
+        let seekable = playback.snapshot.isSeekable
+        return HStack(spacing: 0) {
             Color.clear.contentShape(Rectangle())
-                .onTapGesture(count: 2) { skip(-10) }
-                .onTapGesture { toggleControls() }
+                .modifier(TapOrDoubleTap(doubleTapEnabled: seekable, onTap: toggleControls, onDoubleTap: { skip(-10) }))
             Color.clear.contentShape(Rectangle())
-                .onTapGesture(count: 2) { skip(10) }
-                .onTapGesture { toggleControls() }
+                .modifier(TapOrDoubleTap(doubleTapEnabled: seekable, onTap: toggleControls, onDoubleTap: { skip(10) }))
         }
         .ignoresSafeArea()
         .overlay {
@@ -636,5 +638,23 @@ private struct PlayerDownloadButton: View {
     private func start(_ folder: UUID?) {
         var v = YTVideo(id: videoID, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
         env.downloads.download(v, into: folder)
+    }
+}
+
+
+/// Single tap that fires immediately when double-tap isn't wanted; otherwise the
+/// standard tap/double-tap pair.
+struct TapOrDoubleTap: ViewModifier {
+    let doubleTapEnabled: Bool
+    let onTap: () -> Void
+    let onDoubleTap: () -> Void
+    func body(content: Content) -> some View {
+        if doubleTapEnabled {
+            content
+                .onTapGesture(count: 2, perform: onDoubleTap)
+                .onTapGesture(perform: onTap)
+        } else {
+            content.onTapGesture(perform: onTap)
+        }
     }
 }
