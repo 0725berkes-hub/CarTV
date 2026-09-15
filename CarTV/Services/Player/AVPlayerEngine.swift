@@ -95,7 +95,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             onMain {
                 guard let self, self.generation == gen, let log = self.item?.errorLog()?.events.last else { return }
                 Log.player.error("AVPlayer error log: \(log.errorStatusCode) \(log.errorComment ?? "", privacy: .public)")
-                if !self.hasEverPlayed, log.errorStatusCode == 404 || log.errorStatusCode == 403 {
+                // 403/404 mid-stream (YouTube byte cap after a seek, expired URL) must
+                // surface as a failure, never as a silent stall or a fake "ended".
+                if log.errorStatusCode == 404 || log.errorStatusCode == 403 {
                     self.fail(with: nil, code: log.errorStatusCode)
                 }
             }

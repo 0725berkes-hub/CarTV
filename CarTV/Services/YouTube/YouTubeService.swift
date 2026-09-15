@@ -142,7 +142,8 @@ final class YouTubeService {
     }
 
     /// Resolves a video into a PlayableItem: HLS (native) → generated HLS → progressive MP4.
-    func resolve(_ video: YTVideo) async throws -> Resolved {
+    func resolve(_ video: YTVideo, fresh: Bool = false) async throws -> Resolved {
+        if fresh { streamCache[video.id] = nil }
         if let c = streamCache[video.id], c.expires > Date() {
             let r = Resolved(item: item(for: video, url: c.url), variants: c.variants.map { ($0.0, $0.1) }, captions: [])
             AppEnvironment.shared.playback.pendingQualityVariants = r.variants

@@ -161,6 +161,8 @@ final class PlaybackController {
         if let queue { self.queue = queue } else if !self.queue.contains(where: { $0.id == item.id }) { self.queue = [item] }
         current = item
         attemptedVLC = false
+        attemptedYouTubeRefresh = false
+        lastSeekTarget = 0
         isFallingBack = false
         lastSavedPosition = 0
         qualityVariants = []
@@ -230,8 +232,33 @@ final class PlaybackController {
     }
 
     func seek(to seconds: TimeInterval) {
+        lastSeekTarget = seconds
         engine.seek(to: seconds)
         var s = snapshot; s.position = seconds; snapshot = s
+    }
+
+    /// Where the user last asked to be — kept so a refused seek resumes there, not at 0.
+    private var lastSeekTarget: TimeInterval = 0
+    private var attemptedYouTubeRefresh = false
+
+    private func refreshYouTubeStream(item: PlayableItem, resumeAt: TimeInterval) {
+        guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
+        isFallingBack = true
+        Task { @MainActor [weak self] in
+            guard let self, self.current?.id == item.id else { return }
+            var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
+            do {
+                let resolved = try await AppEnvironment.shared.youtube.resolve(v, fresh: true)
+                guard self.current?.id == item.id else { return }
+                let fresh = resolved.item
+                self.current = fresh
+                if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = fresh }
+                self.start(on: .avPlayer, item: fresh, startAt: resumeAt > 1 ? resumeAt : nil)
+            } catch {
+                self.isFallingBack = false
+                self.snapshot = PlayerSnapshot(state: .failed(.network(String(localized: "YouTube limited this stream. Tap Retry to resume from here."))))
+            }
+        }
     }
 
     func skip(by delta: TimeInterval) {
@@ -363,6 +390,21 @@ final class PlaybackController {
         nowPlaying.update(item: current, snapshot: snap)
 
         if case .failed(let failure) = snap.state {
+            // YouTube: a 403 after a seek means the stream URL was byte-capped or expired.
+            // Never hop to VLC or the next video — fetch a fresh URL once and resume
+            // where the user was; otherwise show a clear, stay-put error.
+            if let item = current, item.ref.kind == .youtube {
+                let at = max(snapshot.position, lastSeekTarget)
+                if !attemptedYouTubeRefresh {
+                    attemptedYouTubeRefresh = true
+                    Log.player.notice("YouTube stream refused (\(failure.message, privacy: .public)); refreshing URL at \(Int(at))s")
+                    refreshYouTubeStream(item: item, resumeAt: at)
+                } else {
+                    snapshot.state = .failed(.network(String(localized: "YouTube limited this stream. Tap Retry to resume from here.")))
+                    isFallingBack = false
+                }
+                return
+            }
             // AVPlayer couldn't handle it → try VLC once, transparently.
             if engineKind == .avPlayer, !attemptedVLC, let item = current, failure != .authRequired {
                 attemptedVLC = true
@@ -380,6 +422,12 @@ final class PlaybackController {
         }
 
         if snap.state == .ended {
+            // A YouTube stream that "ends" nowhere near its duration was cut off (403 byte cap),
+            // not finished — treat it like a refused stream instead of showing Finished / Up Next.
+            if let item = current, item.ref.kind == .youtube, snap.duration > 30, snap.position < snap.duration - 15 {
+                handle(PlayerSnapshot(state: .failed(.network("Stream cut off")), position: max(snap.position, lastSeekTarget), duration: snap.duration))
+                return
+            }
             persistProgress(force: true)
             guard current?.isLive == false else { return }
             // Repeat/shuffle are explicit intents → continue automatically.
