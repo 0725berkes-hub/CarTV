@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Auto-detected channel genre. Order here = display order in the UI.
-enum Genre: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum Genre: String, CaseIterable, Codable, Sendable, Identifiable {
     case news, sports, movies, series, kids, music, documentary, entertainment
     case comedy, animation, education, science, culture, religion, food, travel
     case lifestyle, fashion, health, business, gaming, shopping, weather

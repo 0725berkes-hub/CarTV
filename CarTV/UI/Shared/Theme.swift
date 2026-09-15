@@ -72,7 +72,7 @@ nonisolated enum Theme {
     }
 }
 
-struct CarMetrics: Equatable {
+nonisolated struct CarMetrics: Equatable {
     let railWidth: CGFloat
     let tileWidth: CGFloat
     let gutter: CGFloat
@@ -132,7 +132,7 @@ extension View {
 }
 
 /// Deterministic tint for tiles without artwork, so the same channel always gets the same color.
-enum TileTint {
+nonisolated enum TileTint {
     static func color(for seed: String) -> Color {
         var hash: UInt32 = 2166136261
         for b in seed.utf8 { hash = (hash ^ UInt32(b)) &* 16777619 }

@@ -128,6 +128,7 @@ struct CarNavHost<Root: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             root()
+                .background(CarBackdrop())
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: CarRoute.self) { route in
                     Group {
@@ -151,6 +152,8 @@ struct CarNavHost<Root: View>: View {
                 }
         }
         .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .environment(\.carPush, CarPush { path.append($0) })
     }
 }

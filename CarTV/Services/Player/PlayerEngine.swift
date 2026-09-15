@@ -1,12 +1,12 @@
 import Foundation
 import UIKit
 
-enum PlayerEngineKind: String, Sendable {
+nonisolated enum PlayerEngineKind: String, Sendable {
     case avPlayer = "AVPlayer"
     case vlc = "VLC"
 }
 
-enum PlayerState: Sendable, Equatable {
+nonisolated enum PlayerState: Sendable, Equatable {
     case idle
     case loading
     case buffering
@@ -16,7 +16,7 @@ enum PlayerState: Sendable, Equatable {
     case failed(PlayerFailure)
 }
 
-enum PlayerFailure: Sendable, Equatable, Hashable {
+nonisolated enum PlayerFailure: Sendable, Equatable, Hashable {
     case unreachable
     case unsupportedFormat
     case noContent          // live stream with no segments yet
@@ -36,13 +36,13 @@ enum PlayerFailure: Sendable, Equatable, Hashable {
     }
 }
 
-struct MediaTrack: Identifiable, Hashable, Sendable {
+nonisolated struct MediaTrack: Identifiable, Hashable, Sendable {
     let id: Int
     let name: String
     let languageCode: String?
 }
 
-struct PlayerSnapshot: Sendable, Equatable {
+nonisolated struct PlayerSnapshot: Sendable, Equatable {
     var state: PlayerState = .idle
     var position: TimeInterval = 0
     var duration: TimeInterval = 0        // 0 = live / unknown
@@ -83,7 +83,7 @@ protocol PlayerEngine: AnyObject {
     func setVideoGravity(_ gravity: VideoGravity)
 }
 
-enum VideoGravity: String, CaseIterable, Sendable {
+nonisolated enum VideoGravity: String, CaseIterable, Sendable {
     case fit, fill, stretch
     var next: VideoGravity {
         switch self {

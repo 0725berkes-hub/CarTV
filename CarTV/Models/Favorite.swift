@@ -51,11 +51,11 @@ final class WatchProgress {
     var fraction: Double { duration > 0 ? min(1, position / duration) : 0 }
 }
 
-enum PlayableKind: String, Codable, Sendable {
+nonisolated enum PlayableKind: String, Codable, Sendable {
     case channel, localVideo, vod
 }
 
-struct PlayableRef: Hashable, Codable, Sendable {
+nonisolated struct PlayableRef: Hashable, Codable, Sendable {
     let id: UUID
     let kind: PlayableKind
 }

@@ -2,7 +2,7 @@ import Foundation
 
 /// Immutable, Sendable description of something the player can play.
 /// Built from a `Channel` or `LocalVideo`; safe to hand across actors and to CarPlay.
-struct PlayableItem: Identifiable, Hashable, Sendable {
+nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
     let ref: PlayableRef
     let title: String
     let subtitle: String?
@@ -25,7 +25,7 @@ struct PlayableItem: Identifiable, Hashable, Sendable {
     }
     var isLocal: Bool { url.isFileURL }
 
-    init(channel: Channel, playlistName: String?) {
+    @MainActor init(channel: Channel, playlistName: String?) {
         self.ref = PlayableRef(id: channel.id, kind: .channel)
         self.title = channel.name
         self.subtitle = channel.groupTitle ?? playlistName
@@ -83,7 +83,7 @@ struct PlayableItem: Identifiable, Hashable, Sendable {
         self.subtitleLinks = SubtitleLinks()
     }
 
-    init(video: LocalVideo) {
+    @MainActor init(video: LocalVideo) {
         self.ref = PlayableRef(id: video.id, kind: .localVideo)
         self.title = video.title
         self.subtitle = video.folder?.name

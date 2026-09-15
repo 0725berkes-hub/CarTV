@@ -1,6 +1,6 @@
 import Foundation
 
-extension String {
+nonisolated extension String {
     /// Lower-cased, diacritic-insensitive, whitespace-collapsed form for search & matching.
     nonisolated var searchNormalized: String {
         folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil)
@@ -14,7 +14,7 @@ extension String {
     nonisolated var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-extension URL {
+nonisolated extension URL {
     /// Accepts bare hosts ("example.com/list.m3u") and upgrades them to https.
     nonisolated static func lenient(_ raw: String) -> URL? {
         let text = raw.trimmed
@@ -30,7 +30,7 @@ extension URL {
     }
 }
 
-extension TimeInterval {
+nonisolated extension TimeInterval {
     /// "1:02:03" or "12:03".
     nonisolated var clockString: String {
         guard isFinite, self >= 0 else { return "--:--" }
@@ -40,7 +40,7 @@ extension TimeInterval {
     }
 }
 
-extension Int64 {
+nonisolated extension Int64 {
     nonisolated var byteCountString: String {
         ByteCountFormatter.string(fromByteCount: self, countStyle: .file)
     }
