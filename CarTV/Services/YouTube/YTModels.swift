@@ -51,6 +51,8 @@ nonisolated struct YTShelf: Identifiable, Sendable {
     let id = UUID()
     var title: String?
     var items: [YTItem]
+    /// Per-shelf "load more" token (TV layout paginates each shelf separately).
+    var continuation: String?
 }
 
 nonisolated struct YTPage: Sendable {

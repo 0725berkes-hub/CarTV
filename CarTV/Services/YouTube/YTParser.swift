@@ -18,7 +18,9 @@ nonisolated enum YTParser {
         for shelf in shelfRenderers {
             let title = shelf["title"].text ?? shelf["headerRenderer"].find("title").text
             let items = collectItems(shelf).filter { seenIDs.insert($0.id).inserted }
-            if !items.isEmpty { shelves.append(YTShelf(title: title, items: items)) }
+            let cont = shelf["content"].find("continuations").array.first?["nextContinuationData"]["continuation"].string
+                ?? shelf.find("continuationCommand")["token"].string
+            if !items.isEmpty { shelves.append(YTShelf(title: title?.trimmed.nilIfEmpty, items: items, continuation: cont)) }
         }
         // Flat items not inside a titled shelf (home feed rich grid, search results)
         let loose = collectItems(json).filter { seenIDs.insert($0.id).inserted }
@@ -142,7 +144,15 @@ nonisolated enum YTParser {
         let watch = select.find("watchEndpoint")
         let browse = select.find("browseEndpoint")
 
+        let contentType = t["contentType"].string ?? ""
         if let vid = watch["videoId"].string {
+            // Mixes / radio come as a watch endpoint with an RD… playlist: show them as a playlist card.
+            if let pid = watch["playlistId"].string, pid.hasPrefix("RD") || contentType.contains("PLAYLIST") {
+                return .playlist(YTPlaylist(id: pid, title: title.nilIfEmpty ?? String(localized: "Mix"), channelName: lines.first?.first,
+                                            thumbnailURL: thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg"),
+                                            videoCountText: pid.hasPrefix("RD") ? String(localized: "Mix") : flat.first { $0.localizedCaseInsensitiveContains("video") },
+                                            firstVideoID: vid))
+            }
             var v = YTVideo(id: vid, title: title)
             v.thumbnailURL = thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg")
             v.channelName = lines.first?.first

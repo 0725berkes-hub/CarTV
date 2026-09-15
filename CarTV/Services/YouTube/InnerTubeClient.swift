@@ -227,8 +227,10 @@ nonisolated final class InnerTubeClient: Sendable {
             body["browseId"] = browseId
             if let params { body["params"] = params }
         }
+        // TV continuations are only honoured for the visitor that received them.
+        let vd = try? await visitorData()
         do {
-            return try await call("browse", client: browsingClient(accessToken), body: body, accessToken: accessToken)
+            return try await call("browse", client: browsingClient(accessToken), body: body, accessToken: accessToken, visitorData: vd)
         } catch YTError.network(let msg) where msg == "HTTP 400" && accessToken != nil {
             // TVHTML5 rejects WEB-shaped params/continuations. Public content (channels,
             // playlists) reads fine anonymously as WEB; personal feeds need the token.

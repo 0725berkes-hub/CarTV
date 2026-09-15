@@ -124,7 +124,7 @@ actor TTMediaProxy {
 }
 
 /// Streams an upstream response into the NWConnection as chunks arrive.
-private final class RelayDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+nonisolated private final class RelayDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     let connection: NWConnection
     var session: URLSession?
     private var headSent = false
@@ -165,7 +165,7 @@ private final class RelayDelegate: NSObject, URLSessionDataDelegate, @unchecked 
     }
 }
 
-private final class ProxyContinuationBox: @unchecked Sendable {
+nonisolated private final class ProxyContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var cont: CheckedContinuation<URL, Error>?
     private var pending: Result<URL, Error>?
