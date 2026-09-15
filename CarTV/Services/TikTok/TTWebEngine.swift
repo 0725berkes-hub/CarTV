@@ -176,7 +176,8 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     private static let hookScript = #"""
     (function () {
       if (window.__cartvHooked) return; window.__cartvHooked = true;
-      const post = (o) => { try { window.webkit.messageHandlers.tt.postMessage(o); } catch (e) {} };
+      window.__cartvCaptures = 0;
+      const post = (o) => { try { if (o.kind === 'items') window.__cartvCaptures++; window.webkit.messageHandlers.tt.postMessage(o); } catch (e) {} };
       const wanted = (u) => /\/api\/(recommend|post|challenge|search|explore|favorite|user\/collect|user\/favorite)\/[^?]*item_list/.test(u)
                          || /\/api\/search\/item/.test(u) || /favorite_item_list/.test(u);
 
@@ -204,14 +205,27 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       };
 
       // Scroll to trigger the next page. TikTok's feed container varies; scroll every scrollable.
+      // The web FYP snaps one video per step and only fetches more near the end of
+      // what it holds. So advance like a user: ArrowDown / wheel, several times, with
+      // pauses, until a new item_list lands (or we give up).
+      let advancing = false;
       window.__cartvScroll = function () {
-        try {
-          window.scrollTo(0, document.documentElement.scrollHeight);
-          document.querySelectorAll('[class*="DivVideoFeed"], [data-e2e*="feed"], main, #main-content-homepage_hot')
-            .forEach(el => { try { el.scrollTop = el.scrollHeight; } catch (e) {} });
-          // Nudge via keyboard-style event too; some builds listen for wheel.
-          window.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, bubbles: true }));
-        } catch (e) {}
+        if (advancing) return; advancing = true;
+        const before = window.__cartvCaptures || 0;
+        let steps = 0;
+        const step = () => {
+          steps++;
+          try {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true }));
+            const feed = document.querySelector('[data-e2e="recommend-list-item-container"], [class*="DivVideoFeed"], main') || document.scrollingElement;
+            feed.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, bubbles: true, cancelable: true }));
+            window.scrollBy(0, window.innerHeight);
+          } catch (e) {}
+          const got = (window.__cartvCaptures || 0) > before;
+          if (got || steps >= 12) { advancing = false; post({ kind: 'log', msg: 'advance ' + (got ? 'captured' : 'gave up') + ' after ' + steps }); return; }
+          setTimeout(step, 350);
+        };
+        step();
       };
 
       // Select a profile tab by data-e2e ("favorites" / "liked").

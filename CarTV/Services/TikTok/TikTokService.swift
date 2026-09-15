@@ -66,6 +66,10 @@ final class TikTokService {
                 guard let self, let feed = self.activeFeedForPlayer else { return }
                 self.loadMore(feed)
             }
+            AppEnvironment.shared.playback.onItemChanged = { [weak self] item in
+                guard let self, item?.ref.kind == .tiktok else { return }
+                self.prefetchForPlayer()
+            }
         }
     }
 
@@ -138,15 +142,20 @@ final class TikTokService {
 
     @MainActor
     func prefetchIfNeeded(_ feed: Feed, index: Int) {
-        if items(for: feed).count - index <= 4 { loadMore(feed) }
+        if items(for: feed).count - index <= 8 { loadMore(feed) }
     }
 
     /// Player-driven prefetch: the car's Next button doesn't move the phone pager.
+    /// Also pre-warms the *next* video's first bytes so Next starts instantly.
     @MainActor
     func prefetchForPlayer() {
         let pb = AppEnvironment.shared.playback
         guard let feed = activeFeedForPlayer, let i = pb.currentIndex else { return }
-        if pb.queue.count - i <= 4 { loadMore(feed) }
+        if pb.queue.count - i <= 8 { loadMore(feed) }
+        let list = items(for: feed)
+        for n in 1...2 where list.indices.contains(i + n) {
+            TTMediaProxy.prewarm(playable(list[i + n]).url, headers: client.mediaHeaders)
+        }
     }
 
     private func append(_ new: [TTVideo], to feed: Feed) {

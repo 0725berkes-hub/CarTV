@@ -170,6 +170,7 @@ final class PlaybackController {
         // 1. Instant UI: set current + present the player synchronously, nothing slow yet.
         if let queue { self.queue = queue } else if !self.queue.contains(where: { $0.id == item.id }) { self.queue = [item] }
         current = item
+        onItemChanged?(item)
         attemptedVLC = false
         attemptedYouTubeRefresh = false
         attemptedMyTVRefresh = false
@@ -424,6 +425,8 @@ final class PlaybackController {
 
     /// Called when a linear feed runs out of loaded items; the owner tops up the queue.
     var queueExhausted: (() -> Void)?
+    /// Fired after `current` changes (any surface, any cause). Feeds use it to pre-warm.
+    var onItemChanged: ((PlayableItem?) -> Void)?
 
     /// Append newly loaded items to the live queue without disturbing the current index.
     func extendQueue(with items: [PlayableItem]) {

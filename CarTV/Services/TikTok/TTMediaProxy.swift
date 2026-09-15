@@ -105,16 +105,33 @@ actor TTMediaProxy {
         if let range { up.setValue(range, forHTTPHeaderField: "Range") }
         up.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
-        let delegate = RelayDelegate(connection: c)
-        // URLSession silently drops a hand-set "Cookie" header and substitutes its own
-        // (empty) cookie storage. Turn that machinery off so our header goes on the wire.
+        // One shared upstream session: keeps TLS connections to the CDN warm. A new
+        // session per range request meant a full handshake for every one of the 3-5
+        // probes AVPlayer makes before a video starts — that was the ~1 s gap.
+        let task = upstream.dataTask(with: up)
+        RelayRouter.shared.register(task.taskIdentifier, RelayDelegate(connection: c))
+        task.resume()
+    }
+
+    /// Cookie machinery off so our hand-set Cookie header goes on the wire; HTTP/2
+    /// multiplexing + keep-alive on; generous per-host connection count.
+    nonisolated private static let upstream: URLSession = {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpCookieStorage = nil
         cfg.httpShouldSetCookies = false
         cfg.httpCookieAcceptPolicy = .never
-        let session = URLSession(configuration: cfg, delegate: delegate, delegateQueue: nil)
-        delegate.session = session
-        session.dataTask(with: up).resume()
+        cfg.httpMaximumConnectionsPerHost = 8
+        cfg.timeoutIntervalForRequest = 20
+        cfg.waitsForConnectivity = false
+        return URLSession(configuration: cfg, delegate: RelayRouter.shared, delegateQueue: nil)
+    }()
+
+    /// Warm the connection and the CDN's cache for the next item: fetch its first 256 KB.
+    nonisolated static func prewarm(_ url: URL, headers: [String: String]) {
+        var r = URLRequest(url: url)
+        headers.forEach { r.setValue($1, forHTTPHeaderField: $0) }
+        r.setValue("bytes=0-262143", forHTTPHeaderField: "Range")
+        upstream.dataTask(with: r) { _, _, _ in }.resume()
     }
 
     nonisolated static func respondHead(_ c: NWConnection, _ status: Int, _ headers: [String: String], close: Bool) {
@@ -129,10 +146,30 @@ actor TTMediaProxy {
     }
 }
 
+/// Fans one shared URLSession's callbacks out to the per-connection RelayDelegate.
+nonisolated private final class RelayRouter: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    static let shared = RelayRouter()
+    private let lock = NSLock()
+    private var byTask: [Int: RelayDelegate] = [:]
+
+    func register(_ id: Int, _ d: RelayDelegate) { lock.withLock { byTask[id] = d } }
+    private func delegate(_ task: URLSessionTask) -> RelayDelegate? { lock.withLock { byTask[task.taskIdentifier] } }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        if let d = delegate(dataTask) { d.urlSession(session, dataTask: dataTask, didReceive: response, completionHandler: completionHandler) } else { completionHandler(.cancel) }
+    }
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        delegate(dataTask)?.urlSession(session, dataTask: dataTask, didReceive: data)
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let d = lock.withLock { byTask.removeValue(forKey: task.taskIdentifier) }
+        d?.urlSession(session, task: task, didCompleteWithError: error)
+    }
+}
+
 /// Streams an upstream response into the NWConnection as chunks arrive.
 nonisolated private final class RelayDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     let connection: NWConnection
-    var session: URLSession?
     private var headSent = false
     private var failed = false
 
@@ -171,7 +208,6 @@ nonisolated private final class RelayDelegate: NSObject, URLSessionDataDelegate,
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if !headSent { TTMediaProxy.respondHead(connection, 502, [:], close: true) }
         else { connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [connection] _ in connection.cancel() }) }
-        session.finishTasksAndInvalidate()
     }
 }
 
