@@ -32,6 +32,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             List {
+                favoritesSection
                 if env.settings.mytvEnabled { mytvSection }
                 sourcesSection
                 localSection
@@ -125,6 +126,23 @@ struct LibraryView: View {
     }
 
     // MARK: Sections
+
+    @ViewBuilder private var favoritesSection: some View {
+        let _ = env.favorites.revision
+        let count = env.favorites.favoriteItems().count
+        Section {
+            NavigationLink { FavoritesView() } label: {
+                HStack(spacing: Theme.s3) {
+                    Image(systemName: "heart.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.live).frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Favorites").font(Theme.Font.headline).foregroundStyle(Theme.ink)
+                        Text(count == 0 ? String(localized: "Long-press anything to save it here") : String(localized: "\(count) saved"))
+                            .font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                    }
+                }
+            }
+        }
+    }
 
     @ViewBuilder private var mytvSection: some View {
         Section {

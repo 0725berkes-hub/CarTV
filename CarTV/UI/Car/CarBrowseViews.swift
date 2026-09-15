@@ -21,7 +21,7 @@ struct CarHomeView: View {
 
                 let favs = env.favorites.favoriteItems()
                 if !favs.isEmpty {
-                    CarShelf(title: "Favorites") {
+                    CarShelf(title: "Favorites", seeAll: favs.count > 8 ? .favorites : nil) {
                         ForEach(favs.prefix(16)) { item in CarTileButton(item: item, queue: favs) }
                     }
                 }
@@ -75,8 +75,15 @@ struct CarLibraryView: View {
 
     var body: some View {
         let _ = env.vod.movies.count
+        let _ = env.favorites.revision
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
+                let favCount = env.favorites.favoriteItems().count
+                if favCount > 0 {
+                    Button { push(CarRoute.favorites) } label: {
+                        CarSourceCard(symbol: "heart.fill", title: String(localized: "Favorites"), subtitle: String(localized: "\(favCount) saved"), tint: Theme.live)
+                    }.buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
+                }
                 if env.settings.mytvEnabled {
                     Button { push(CarRoute.movies) } label: {
                         CarSourceCard(symbol: "popcorn.fill", title: String(localized: "Movies"),

@@ -4,22 +4,19 @@ struct FavoritesView: View {
     @Environment(AppEnvironment.self) private var env
 
     var body: some View {
-        NavigationStack {
-            Group {
-                let _ = env.favorites.revision
-                let _ = env.library.revision
-                let items = env.favorites.favoriteItems()
-                if items.isEmpty {
-                    EmptyState(symbol: "heart", title: "Nothing saved yet", message: "Touch and hold any channel or video to keep it here.")
-                } else {
-                    ItemGrid(items: items, showHealth: false)
-                }
+        Group {
+            let _ = env.favorites.revision
+            let _ = env.library.revision
+            let items = env.favorites.favoriteItems()
+            if items.isEmpty {
+                EmptyState(symbol: "heart", title: "Nothing saved yet", message: "Touch and hold any channel, video or movie to keep it here.")
+            } else {
+                ItemGrid(items: items, showHealth: false)
             }
-            .background(Theme.ground.ignoresSafeArea())
-            .navigationTitle("Favorites")
-            .toolbar { ToolbarItem(placement: .topBarLeading) { MoreToolbarMenu() } }
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .background(Theme.ground.ignoresSafeArea())
+        .navigationTitle("Favorites")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

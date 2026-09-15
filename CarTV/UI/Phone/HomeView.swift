@@ -275,11 +275,12 @@ private struct ContinueCard: View {
 struct FavoritesShelf: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
+    @State private var showAllFavorites = false
     var body: some View {
         let _ = env.favorites.revision
         let items = env.favorites.favoriteItems()
         if !items.isEmpty {
-            HomeSection(title: "Favorites", count: items.count, symbol: "heart.fill") {
+            HomeSection(title: "Favorites", count: items.count, symbol: "heart.fill", seeAll: items.count > 6 ? { showAllFavorites = true } : nil) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: Theme.s2) {
                         ForEach(items.prefix(20)) { item in
@@ -296,6 +297,7 @@ struct FavoritesShelf: View {
                     .padding(.horizontal, Theme.s4)
                 }
             }
+            .navigationDestination(isPresented: $showAllFavorites) { FavoritesView() }
         }
     }
 }

@@ -159,6 +159,9 @@ nonisolated enum YTParser {
             // A "Mix" tile is a radio playlist; still playable as a video with a playlist context.
             return .video(v)
         }
+        // Library shortcut tiles ("History", "Playlists", …) carry no artwork at all; those
+        // are navigation rows, not content — drop the ones that aren't playlists/channels.
+        if thumb == nil, let bid = browse["browseId"].string, bid.hasPrefix("FE") { return nil }
         if title.isEmpty || thumb == nil {
             // Shape we don't know yet — log a compact outline so it can be added.
             let keys = (t.raw as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "?"
@@ -242,9 +245,26 @@ nonisolated enum YTParser {
             w.channel = c
         }
         w.description = secondary["attributedDescription"]["content"].string ?? secondary["description"].text
-        let related = json["contents"]["twoColumnWatchNextResults"]["secondaryResults"]["secondaryResults"]
-        w.related = collectItems(related).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
-        w.relatedContinuation = related.findAll("continuationCommand").first?["token"].string
+        // WEB layout: right-hand column. TVHTML5 layout (signed-in): the "pivot" shelves
+        // plus the autoplay set, which is exactly what YouTube itself plays next.
+        let web = json["contents"]["twoColumnWatchNextResults"]["secondaryResults"]["secondaryResults"]
+        var related: [YTVideo] = collectItems(web).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+        var continuation = web.findAll("continuationCommand").first?["token"].string
+        if related.isEmpty {
+            let tv = json["contents"]["singleColumnWatchNextResults"]
+            let autoplayIDs = tv["autoplay"]["autoplay"]["sets"].array.compactMap { $0["autoplayVideoRenderer"].find("watchEndpoint")["videoId"].string }
+            let pivot = collectItems(tv["pivot"]).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+            // Autoplay picks first (as stubs if the pivot doesn't list them), then the shelves.
+            var seen = Set<String>()
+            for id in autoplayIDs where !seen.contains(id) {
+                seen.insert(id)
+                related.append(pivot.first { $0.id == id } ?? YTVideo(id: id, title: ""))
+            }
+            for v in pivot where !seen.contains(v.id) { seen.insert(v.id); related.append(v) }
+            continuation = tv["pivot"].findAll("continuationCommand").first?["token"].string
+        }
+        w.related = related
+        w.relatedContinuation = continuation
         for section in json.findAll("itemSectionRenderer") where section["sectionIdentifier"].string == "comment-item-section" {
             w.commentsContinuation = section.find("continuationCommand")["token"].string
         }

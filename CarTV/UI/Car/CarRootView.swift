@@ -2,12 +2,12 @@ import SwiftUI
 
 enum CarSection: Hashable, CaseIterable, Identifiable {
     var id: Self { self }
-    case home, favorites, youtube, cast, library
+    case home, youtube, cast, library
     var title: LocalizedStringResource {
-        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .cast: "Cast"; case .library: "Library" }
+        switch self { case .home: "Home"; case .youtube: "YouTube"; case .cast: "Cast"; case .library: "Library" }
     }
     var symbol: String {
-        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
+        switch self { case .home: "house.fill"; case .youtube: "play.rectangle.fill"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
     }
 }
 
@@ -20,6 +20,7 @@ enum CarRoute: Hashable {
     case series                       // MyTV+ series categories
     case seriesCategory(String)
     case seriesDetail(VODSeries)      // seasons + episodes
+    case favorites
 
     var title: String {
         switch self {
@@ -31,6 +32,7 @@ enum CarRoute: Hashable {
         case .series: String(localized: "Series")
         case .seriesCategory(let c): c
         case .seriesDetail(let s): s.title
+        case .favorites: String(localized: "Favorites")
         }
     }
 }
@@ -74,7 +76,6 @@ struct CarRootView: View {
                     ZStack {
                         switch section {
                         case .home:      CarNavHost(path: path) { CarHomeView() }
-                        case .favorites: CarNavHost(path: path) { CarFavoritesView() }
                         case .youtube:   CarNavHost(path: path) { CarYouTubeView() }
                         case .cast:      CarNavHost(path: path) { CarCastView() }
                         case .library:   CarNavHost(path: path) { CarLibraryView() }
@@ -150,6 +151,7 @@ struct CarNavHost<Root: View>: View {
                     case .series:              CarVODCategoriesView(kind: .series)
                     case .seriesCategory(let c): CarSeriesGridView(category: c)
                     case .seriesDetail(let s): CarSeriesDetailView(series: s)
+                    case .favorites:           CarFavoritesView()
                     }
                 }
                 .id(route)
