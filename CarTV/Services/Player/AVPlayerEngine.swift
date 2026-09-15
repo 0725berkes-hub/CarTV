@@ -60,10 +60,24 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
         var headers = playable.headers
         if headers["User-Agent"] == nil { headers["User-Agent"] = options.userAgent }
-        let asset = AVURLAsset(url: playable.url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": headers,
-            AVURLAssetPreferPreciseDurationAndTimingKey: !playable.isLive
-        ])
+        var assetOptions: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: !playable.isLive]
+        // AVFoundation silently drops `Cookie` from the header-fields option (it's a
+        // reserved header). Cookies must go in as HTTPCookie objects instead, or the
+        // CDN 403s and we fall back to VLC for nothing (TikTok, some Xtream hosts).
+        if let raw = headers.removeValue(forKey: "Cookie"), let host = playable.url.host {
+            var jar: [HTTPCookie] = []
+            for pair in raw.split(separator: ";") {
+                let kv = pair.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+                guard kv.count == 2 else { continue }
+                // Domain: the CDN host's registrable suffix (v16-webapp-prime.tiktok.com → .tiktok.com)
+                let parts = host.split(separator: ".")
+                let domain = parts.count >= 2 ? "." + parts.suffix(2).joined(separator: ".") : host
+                if let c = HTTPCookie(properties: [.name: kv[0], .value: kv[1], .domain: domain, .path: "/", .secure: "TRUE"]) { jar.append(c) }
+            }
+            if !jar.isEmpty { assetOptions[AVURLAssetHTTPCookiesKey] = jar }
+        }
+        assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+        let asset = AVURLAsset(url: playable.url, options: assetOptions)
         let newItem = AVPlayerItem(asset: asset)
         // 0 = let AVFoundation pick. Forcing a tiny buffer on live HLS makes it render
         // one frame and then sit at rate 0 waiting for data it was told not to wait for.

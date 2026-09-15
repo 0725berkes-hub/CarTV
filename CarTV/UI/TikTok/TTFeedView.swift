@@ -25,6 +25,9 @@ struct TTFeedView: View {
                 overlayChrome(tt)
             }
         }
+        // Pages must be sized to the whole screen, not the tab-bar-inset area; the
+        // tab bar floats over the bottom of the video like TikTok's own.
+        .ignoresSafeArea()
         .sheet(isPresented: $showSignIn) { TTSignInView() }
         .sheet(item: $showCreator) { a in NavigationStack { TTCreatorView(author: a) } }
         .onChange(of: tt.pendingSignInPrompt, initial: true) { _, p in
@@ -72,19 +75,22 @@ struct TTFeedView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { i, v in
-                            TTPage(video: v, isCurrent: i == index, size: geo.size, onCreator: { showCreator = v.author })
-                                .frame(width: geo.size.width, height: geo.size.height)
-                                .id(i)
-                        }
+                // A vertical TabView is a real paging scroll view: one page, hard snap,
+                // no partial pages. (.scrollTargetBehavior(.paging) uses the *container*
+                // height for its page size, which under the tab bar's safe-area inset
+                // is shorter than the pages we lay out — hence half-and-half.)
+                TabView(selection: $index) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { i, v in
+                        TTPage(video: v, isCurrent: i == index, size: geo.size, onCreator: { showCreator = v.author })
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .rotationEffect(.degrees(90))           // undo the container's rotation
+                            .tag(i)
                     }
-                    .scrollTargetLayout()
                 }
-                .scrollTargetBehavior(.paging)
-                .scrollIndicators(.hidden)
-                .scrollPosition(id: Binding(get: { index }, set: { if let i = $0 { index = i } }))
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(width: geo.size.height, height: geo.size.width)   // swapped: the TabView is rotated
+                .rotationEffect(.degrees(-90))
+                .frame(width: geo.size.width, height: geo.size.height)
                 .ignoresSafeArea()
                 .onChange(of: index, initial: true) { _, i in
                     guard items.indices.contains(i) else { return }
@@ -92,10 +98,8 @@ struct TTFeedView: View {
                     tt.prefetchIfNeeded(feed, index: i)
                 }
                 .onChange(of: items.count) { _, _ in
-                    // First batch just arrived while we were sitting on an empty index.
                     if playback.current?.ref.kind != .tiktok, items.indices.contains(index) { play(items[index], queue: items, tt: tt) }
                 }
-                .refreshable { await tt.refresh(feed); index = 0 }
             }
         }
     }
