@@ -18,6 +18,11 @@ struct PlayableItem: Identifiable, Hashable, Sendable {
     var subtitleLinks: SubtitleLinks = SubtitleLinks()
 
     var id: UUID { ref.id }
+
+    init(ref: PlayableRef, title: String, subtitle: String?, url: URL, artworkURL: URL?, headers: [String: String], genre: Genre?, isLive: Bool, duration: TimeInterval, streamKind: StreamKind) {
+        self.ref = ref; self.title = title; self.subtitle = subtitle; self.url = url; self.artworkURL = artworkURL
+        self.headers = headers; self.genre = genre; self.isLive = isLive; self.duration = duration; self.streamKind = streamKind
+    }
     var isLocal: Bool { url.isFileURL }
 
     init(channel: Channel, playlistName: String?) {
@@ -91,3 +96,22 @@ struct PlayableItem: Identifiable, Hashable, Sendable {
         self.duration = video.duration
     }
 }
+
+extension PlayableItem {
+    /// A cast item: no library record, plays straight from the URL.
+    init(castURL url: URL, title: String, artwork: URL?) {
+        self.init(
+            ref: PlayableRef(id: UUID(), kind: .channel),
+            title: title,
+            subtitle: String(localized: "Cast"),
+            url: url,
+            artworkURL: artwork,
+            headers: [:],
+            genre: nil,
+            isLive: false,
+            duration: 0,
+            streamKind: StreamKind.detect(from: url)
+        )
+    }
+}
+

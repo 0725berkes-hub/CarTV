@@ -1,5 +1,7 @@
+#if DLNA_RECEIVER
 import Foundation
 import Network
+import MediaPlayer
 import UIKit
 import OSLog
 import Observation
@@ -94,24 +96,6 @@ final class CastReceiver {
     var currentURI: String { playback.current?.url.absoluteString ?? "" }
 }
 
-extension PlayableItem {
-    /// A cast item: no library record, plays straight from the URL.
-    init(castURL url: URL, title: String, artwork: URL?) {
-        self.init(
-            ref: PlayableRef(id: UUID(), kind: .channel),
-            title: title,
-            subtitle: String(localized: "Cast"),
-            url: url,
-            artworkURL: artwork,
-            headers: [:],
-            genre: nil,
-            isLive: false,
-            duration: 0,
-            streamKind: StreamKind.detect(from: url)
-        )
-    }
-}
-
 /// Minimal DIDL-Lite reader — just the fields we surface.
 enum DIDLParser {
     nonisolated static func title(from xml: String?) -> String? { tag("dc:title", in: xml) }
@@ -142,7 +126,6 @@ enum SystemVolume {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { v.slider?.setValue(value, animated: false) }
     }
 }
-import MediaPlayer
 final class MPVolumeViewHolder {
     static let shared = MPVolumeViewHolder()
     let view = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 1, height: 1))
@@ -152,3 +135,5 @@ final class MPVolumeViewHolder {
         UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.addSubview(view)
     }
 }
+
+#endif

@@ -31,6 +31,7 @@ final class MirrorReceiver {
     private var frameCount = 0
     private var fpsTimer: DispatchSourceTimer?
     private var lastFrameAt: Date = .distantPast
+    private var pausedForMirror = false
 
     func start() {
         guard listener == nil else { return }

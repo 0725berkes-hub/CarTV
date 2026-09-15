@@ -7,14 +7,36 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B2000001000000000000EX11 /* ScreenRelay.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2000001000000000000EX02 /* ScreenRelay.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1000001000000000000VLC3 /* MobileVLCKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1000001000000000000VLC2 /* MobileVLCKit */; };
+		B2000001000000000000EX11 /* ScreenRelay.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2000001000000000000EX02 /* ScreenRelay.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B2000001000000000000EX13 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 94C0025D3058C92A00686174 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B2000001000000000000EX01;
+			remoteInfo = ScreenRelay;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B2000001000000000000EX10 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				B2000001000000000000EX11 /* ScreenRelay.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		B2000001000000000000EX02 /* ScreenRelay.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ScreenRelay.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		94C002653058C92A00686174 /* CarTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CarTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000001000000000000VLC1 /* VLCKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = VLCKit; path = Packages/VLCKit; sourceTree = "<group>"; };
+		B2000001000000000000EX02 /* ScreenRelay.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ScreenRelay.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -53,42 +75,16 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
-/* Begin PBXContainerItemProxy section */
-		B2000001000000000000EX13 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 94C0025D3058C92A00686174 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B2000001000000000000EX01;
-			remoteInfo = ScreenRelay;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		B2000001000000000000EX10 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				B2000001000000000000EX11 /* ScreenRelay.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFrameworksBuildPhase section */
-		B2000001000000000000EX04 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		94C002623058C92A00686174 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				A1000001000000000000VLC3 /* MobileVLCKit in Frameworks */,
+			);
+		};
+		B2000001000000000000EX04 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -159,8 +155,6 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			fileSystemSynchronizedGroups = (
 				B2000001000000000000EX09 /* ScreenRelay */,
 			);
@@ -215,10 +209,8 @@
 		};
 		B2000001000000000000EX05 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
@@ -230,10 +222,8 @@
 		};
 		B2000001000000000000EX03 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -508,7 +498,6 @@
 				B2000001000000000000EX07 /* Debug configuration for PBXNativeTarget "ScreenRelay" */,
 				B2000001000000000000EX08 /* Release configuration for PBXNativeTarget "ScreenRelay" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */

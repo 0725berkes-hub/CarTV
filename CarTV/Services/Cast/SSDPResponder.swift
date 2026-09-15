@@ -1,3 +1,4 @@
+#if DLNA_RECEIVER
 import Foundation
 import Network
 import OSLog
@@ -145,3 +146,5 @@ enum LocalIP {
         return fallback
     }
 }
+
+#endif

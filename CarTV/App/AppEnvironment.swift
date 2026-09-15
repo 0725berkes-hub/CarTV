@@ -18,7 +18,9 @@ final class AppEnvironment {
     let carPlay: CarPlayCoordinator
     let health: SourceHealthService
     let settings: AppSettings
+    #if DLNA_RECEIVER
     let cast: CastReceiver
+    #endif
     let mirror: MirrorReceiver
     let vod: VODService
 
@@ -53,7 +55,9 @@ final class AppEnvironment {
         vod       = VODService()
         playback  = PlaybackController(settings: settings, progress: progress)
         carPlay   = CarPlayCoordinator(playback: playback)
+        #if DLNA_RECEIVER
         cast      = CastReceiver(playback: playback)
+        #endif
         mirror    = MirrorReceiver()
         playback.siblingsProvider = { [library] item in library.siblings(of: item) }
     }
@@ -63,7 +67,9 @@ final class AppEnvironment {
         didBootstrap = true
         AudioSessionController.configure()
         playback.attachNowPlaying()
-        cast.start()
+        #if DLNA_RECEIVER
+        cast.start()   // needs com.apple.developer.networking.multicast
+        #endif
         mirror.start()
         Log.app.info("Bootstrapped. Store at \(AppPaths.applicationSupport.path, privacy: .public)")
     }

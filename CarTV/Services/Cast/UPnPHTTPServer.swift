@@ -1,3 +1,4 @@
+#if DLNA_RECEIVER
 import Foundation
 import Network
 import OSLog
@@ -289,3 +290,5 @@ enum UPnPXML {
         ("GetCurrentConnectionIDs", [("ConnectionIDs","out","CurrentConnectionIDs")]),
     ], vars: [("SourceProtocolInfo","string"),("SinkProtocolInfo","string"),("CurrentConnectionIDs","string")])
 }
+
+#endif
