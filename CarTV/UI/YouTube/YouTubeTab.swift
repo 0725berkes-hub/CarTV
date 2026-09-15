@@ -59,6 +59,12 @@ struct YouTubeTab: View {
             .onSubmit(of: .search) { submitted = query }
             .onChange(of: query) { _, q in if q.isEmpty { submitted = nil } }
             .sheet(isPresented: $showSignIn) { YTAccountSheet() }
+            .onChange(of: env.youtube.pendingSignInPrompt, initial: true) { _, pending in
+                if pending, !env.youtube.auth.isSignedIn {
+                    env.youtube.pendingSignInPrompt = false
+                    Task { try? await Task.sleep(for: .milliseconds(400)); showSignIn = true }
+                }
+            }
             .navigationDestination(for: YTVideo.self) { YTWatchView(video: $0) }
             .navigationDestination(for: YTChannel.self) { YTChannelView(channel: $0) }
             .navigationDestination(for: YTPlaylist.self) { YTPlaylistView(playlist: $0) }

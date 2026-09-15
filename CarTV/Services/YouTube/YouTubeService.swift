@@ -8,6 +8,9 @@ import OSLog
 @Observable
 final class YouTubeService {
     let auth = YTAuth()
+    /// Set by onboarding when the user opted into YouTube sign-in; the YouTube tab
+    /// presents the account sheet once it appears and clears this.
+    var pendingSignInPrompt = false
     private let api = InnerTubeClient.shared
 
     // Resolved stream cache: videoID → (playable URL, expiry)

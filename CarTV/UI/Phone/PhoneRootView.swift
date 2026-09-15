@@ -65,7 +65,12 @@ struct PhoneRootView: View {
             AddSourceSheet()
         }
         .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingView { settings.hasCompletedOnboarding = true; showOnboarding = false }
+            OnboardingView {
+                settings.hasCompletedOnboarding = true
+                showOnboarding = false
+                // Opted into YouTube sign-in → land on that tab so the sheet appears right away.
+                if env.youtube.pendingSignInPrompt { tab = .youtube }
+            }
         }
         .onChange(of: settings.hasCompletedOnboarding, initial: true) { _, done in
             // Fires on launch and whenever Settings resets the flag (tour again / clear all).
