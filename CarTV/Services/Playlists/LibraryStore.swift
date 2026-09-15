@@ -150,9 +150,22 @@ final class LibraryStore {
         return folder
     }
 
+    /// `deleteFiles: true` removes the folder and everything in it. `false` keeps the
+    /// videos and moves them to the loose "Videos" bucket.
     func delete(_ folder: VideoFolder, deleteFiles: Bool) {
-        for video in localVideos(in: folder) { delete(video, removeFile: deleteFiles) }
+        let videos = localVideos(in: folder)
+        if deleteFiles {
+            delete(videos, removeFile: true)
+        } else {
+            for v in videos { v.folder = nil }
+        }
         context.delete(folder)
+        save()
+    }
+
+    func rename(_ folder: VideoFolder, to name: String) {
+        guard let n = name.trimmed.nilIfEmpty else { return }
+        folder.name = n
         save()
     }
 

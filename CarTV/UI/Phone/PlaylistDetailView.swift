@@ -110,9 +110,20 @@ struct PlaylistDetailView: View {
 struct FolderDetailView: View {
     @Environment(AppEnvironment.self) private var env
     let folder: VideoFolder
+    @State private var renaming = false
+    @State private var name = ""
     var body: some View {
         let _ = env.library.revision
         LocalVideosGridView(videos: env.library.localVideos(in: folder), title: folder.name)
+            .toolbarTitleMenu {
+                // Tap the title → rename, like Notes/Files.
+                Button { name = folder.name; renaming = true } label: { Label("Rename Folder", systemImage: "pencil") }
+            }
+            .alert("Rename Folder", isPresented: $renaming) {
+                TextField("Name", text: $name)
+                Button("Save") { env.library.rename(folder, to: name) }.disabled(name.trimmed.isEmpty)
+                Button("Cancel", role: .cancel) {}
+            }
     }
 }
 

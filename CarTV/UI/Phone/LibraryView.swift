@@ -23,6 +23,9 @@ struct LibraryView: View {
     @State private var renaming: Playlist?
     @State private var renameText = ""
     @State private var deleting: Playlist?
+    @State private var renamingFolder: VideoFolder?
+    @State private var folderName = ""
+    @State private var deletingFolder: VideoFolder?
     @State private var refreshing: Set<UUID> = []
     @State private var toast: String?
 
@@ -94,6 +97,20 @@ struct LibraryView: View {
                 Button("Save") { if let p = renaming { env.library.rename(p, to: renameText) }; renaming = nil }
                 Button("Cancel", role: .cancel) { renaming = nil }
             }
+            .alert("Rename Folder", isPresented: Binding(get: { renamingFolder != nil }, set: { if !$0 { renamingFolder = nil } })) {
+                TextField("Name", text: $folderName)
+                Button("Save") { if let f = renamingFolder { env.library.rename(f, to: folderName) }; renamingFolder = nil }
+                    .disabled(folderName.trimmed.isEmpty)
+                Button("Cancel", role: .cancel) { renamingFolder = nil }
+            }
+            .confirmationDialog(
+                "Delete “\(deletingFolder?.name ?? "")”?",
+                isPresented: Binding(get: { deletingFolder != nil }, set: { if !$0 { deletingFolder = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Folder and Videos", role: .destructive) { if let f = deletingFolder { env.library.delete(f, deleteFiles: true) }; deletingFolder = nil }
+                Button("Delete Folder, Keep Videos") { if let f = deletingFolder { env.library.delete(f, deleteFiles: false) }; deletingFolder = nil }
+            } message: { Text("Keeping the videos moves them to “Videos”.") }
             .confirmationDialog("Delete Playlist", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { if let p = deleting { env.library.delete(p) }; deleting = nil }
             } message: { Text("This removes the playlist and its channels from CarTV.") }
@@ -183,8 +200,13 @@ struct LibraryView: View {
                         }
                     }
                 }
-                .swipeActions {
-                    Button(role: .destructive) { env.library.delete(folder, deleteFiles: true) } label: { Label("Delete Folder", systemImage: "trash") }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) { deletingFolder = folder } label: { Label("Delete", systemImage: "trash") }
+                    Button { folderName = folder.name; renamingFolder = folder } label: { Label("Rename", systemImage: "pencil") }.tint(Theme.amber)
+                }
+                .contextMenu {
+                    Button { folderName = folder.name; renamingFolder = folder } label: { Label("Rename", systemImage: "pencil") }
+                    Button(role: .destructive) { deletingFolder = folder } label: { Label("Delete Folder", systemImage: "trash") }
                 }
             }
             if !looseVideos.isEmpty {
