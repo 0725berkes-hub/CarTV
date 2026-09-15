@@ -94,6 +94,10 @@ struct YTFeedView: View {
     @State private var error: String?
     @State private var loadingMore = false
 
+    private var verticalFeed: Bool {
+        switch feed { case .history, .watchLater, .liked, .subscriptions, .playlist: true; default: false }
+    }
+
     var body: some View {
         Group {
             if let page {
@@ -103,7 +107,21 @@ struct YTFeedView: View {
                             YTSignInBanner().padding(.horizontal, Theme.s4)
                         }
                         ForEach(page.shelves) { shelf in
-                            if let t = shelf.title {
+                            if let t = shelf.title, verticalFeed {
+                                // History / Watch Later / Liked: day-grouped lists, full width.
+                                ShelfHeader(title: LocalizedStringResource(stringLiteral: t))
+                                let videos = shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }
+                                ForEach(shelf.items) { item in
+                                    Group {
+                                        switch item {
+                                        case .video(let v): YTVideoCard(video: v, queue: videos, compact: true)
+                                        case .channel(let c): YTChannelRow(channel: c)
+                                        case .playlist(let p): YTPlaylistCard(playlist: p)
+                                        }
+                                    }
+                                    .padding(.horizontal, Theme.s4)
+                                }
+                            } else if let t = shelf.title {
                                 ShelfHeader(title: LocalizedStringResource(stringLiteral: t))
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     LazyHStack(alignment: .top, spacing: Theme.s3) {
@@ -137,7 +155,7 @@ struct YTFeedView: View {
                                 }
                             }
                         }
-                        if page.continuation != nil {
+                        if page.continuation != nil || page.shelves.contains(where: { $0.continuation != nil }) {
                             ProgressView().frame(maxWidth: .infinity, minHeight: 64).task { await loadMore() }
                         }
                     }
@@ -186,8 +204,26 @@ struct YTFeedView: View {
     func refresh() async { await load(force: true) }
 
     private func loadMore() async {
-        guard !loadingMore, let cont = page?.continuation else { return }
+        guard !loadingMore, page != nil else { return }
         loadingMore = true
+        defer { loadingMore = false }
+        // Vertical feeds like History are a stack of titled shelves (one per day), each
+        // with its own continuation. Grow those in place first.
+        var grew = false
+        if let shelves = page?.shelves {
+            for sh in shelves where sh.continuation != nil && sh.title != nil {
+                if let more = try? await env.youtube.more(shelf: sh.continuation!), let i = page?.shelves.firstIndex(where: { $0.id == sh.id }) {
+                    let seen = Set(page?.flatItems.map(\.id) ?? [])
+                    let fresh = more.items.filter { !seen.contains($0.id) }
+                    page?.shelves[i].items.append(contentsOf: fresh)
+                    page?.shelves[i].continuation = more.continuation
+                    grew = grew || !fresh.isEmpty
+                } else if let i = page?.shelves.firstIndex(where: { $0.id == sh.id }) {
+                    page?.shelves[i].continuation = nil
+                }
+            }
+        }
+        guard let cont = page?.continuation else { return }
         if let more = try? await env.youtube.fetch(feed, continuation: cont) {
             // Grow the existing grid instead of appending new shelves: appending a
             // sibling grid re-lays out the whole stack and throws the scroll position.
@@ -204,9 +240,8 @@ struct YTFeedView: View {
                 else { page?.shelves.append(YTShelf(title: nil, items: loose)) }
             }
             page?.shelves.append(contentsOf: titled)
-            page?.continuation = (loose.isEmpty && titled.isEmpty) ? nil : more.continuation
+            page?.continuation = (loose.isEmpty && titled.isEmpty && !grew) ? nil : more.continuation
         } else { page?.continuation = nil }
-        loadingMore = false
     }
 }
 

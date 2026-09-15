@@ -38,6 +38,9 @@ struct YTWatchView: View {
                     ShelfHeader(title: "Up next")
                     LazyVStack(spacing: Theme.s3) {
                         ForEach(related) { v in YTVideoCard(video: v, queue: related, compact: true).padding(.horizontal, Theme.s4) }
+                        if info?.relatedContinuation != nil {
+                            ProgressView().frame(maxWidth: .infinity, minHeight: 56).task { await moreRelated() }
+                        }
                     }
                 }
             }
@@ -184,6 +187,23 @@ struct YTWatchView: View {
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private func moreRelated() async {
+        guard let c = info?.relatedContinuation else { return }
+        guard let more = try? await env.youtube.related(continuation: c) else { info?.relatedContinuation = nil; return }
+        let vids = more.flatItems.compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+        let seen = Set(info?.related.map(\.id) ?? [])
+        let fresh = vids.filter { !seen.contains($0.id) }
+        fresh.forEach { env.youtube.remember($0) }
+        info?.related.append(contentsOf: fresh)
+        info?.relatedContinuation = fresh.isEmpty ? nil : more.continuation
+        // Extend the playback queue too so Next keeps going.
+        if let cur = playback.current, cur.ref.id == YouTubeService.uuid(for: video.id) {
+            let ids = Set(playback.queue.map(\.id))
+            let add = fresh.compactMap { env.youtube.cachedStub($0.id) }.filter { !ids.contains($0.id) }
+            if !add.isEmpty { playback.setQueue(playback.queue + add) }
+        }
     }
 
     private func startPlayback() async {

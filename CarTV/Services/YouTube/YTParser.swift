@@ -272,7 +272,8 @@ nonisolated enum YTParser {
                 if let v = pivot.first(where: { $0.id == id }) { seen.insert(id); related.append(v) }
             }
             for v in pivot where !seen.contains(v.id) { seen.insert(v.id); related.append(v) }
-            continuation = tv["pivot"].findAll("continuationCommand").first?["token"].string
+            continuation = tv["pivot"].find("continuations").array.first?["nextContinuationData"]["continuation"].string
+                ?? tv["pivot"].findAll("continuationCommand").first?["token"].string
         }
         w.related = related
         w.relatedContinuation = continuation

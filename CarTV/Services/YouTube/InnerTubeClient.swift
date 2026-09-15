@@ -257,7 +257,9 @@ nonisolated final class InnerTubeClient: Sendable {
             body["videoId"] = videoID
             if let playlistID { body["playlistId"] = playlistID }
         }
-        return try await call("next", client: browsingClient(accessToken), body: body, accessToken: accessToken)
+        // Continuations are bound to the visitor that received them.
+        let vd = try? await visitorData()
+        return try await call("next", client: browsingClient(accessToken), body: body, accessToken: accessToken, visitorData: vd)
     }
 
     /// Search-as-you-type suggestions (public endpoint, not InnerTube).

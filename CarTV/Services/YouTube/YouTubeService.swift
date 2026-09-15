@@ -7,8 +7,8 @@ import OSLog
 /// the car UI never waits on the network twice for the same screen.
 @Observable
 final class YouTubeService {
-    let auth = YTAuth()
-    lazy var history = YTWatchHistory(auth: auth)
+    let auth: YTAuth
+    @ObservationIgnored let history: YTWatchHistory
     /// Set by onboarding when the user opted into YouTube sign-in; the YouTube tab
     /// presents the account sheet once it appears and clears this.
     var pendingSignInPrompt = false
@@ -23,6 +23,9 @@ final class YouTubeService {
     private let pageTTL: TimeInterval = 600
 
     init() {
+        let a = YTAuth()
+        auth = a
+        history = YTWatchHistory(auth: a)
         HLSBuilder.purge()
         if let data = UserDefaults.standard.data(forKey: "yt.stubs"), let d = try? JSONDecoder().decode([String: Stub].self, from: data) { stubs = d }
     }
@@ -175,7 +178,13 @@ final class YouTubeService {
     }
 
     func related(continuation: String) async throws -> YTPage {
-        YTParser.page(try await api.next(videoID: "", continuation: continuation, accessToken: await auth.token()))
+        let json = try await api.next(videoID: "", continuation: continuation, accessToken: await auth.token())
+        var page = YTParser.page(json)
+        // TV: the next token sits on the continued sectionList, not on a shelf.
+        if page.continuation == nil {
+            page.continuation = json["continuationContents"].find("continuations").array.first?["nextContinuationData"]["continuation"].string
+        }
+        return page
     }
 
     // MARK: Actions
