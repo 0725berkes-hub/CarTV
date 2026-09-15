@@ -54,7 +54,9 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
             let cfg = WKWebViewConfiguration()
             cfg.websiteDataStore = .default()          // shares cookies with the login view
             cfg.mediaTypesRequiringUserActionForPlayback = .all   // never autoplay — we only want the JSON
-            cfg.allowsInlineMediaPlayback = false
+            cfg.allowsInlineMediaPlayback = true                    // inline (not fullscreen) so it can't grab the session
+            cfg.allowsAirPlayForMediaPlayback = false
+            cfg.allowsPictureInPictureMediaPlayback = false
             let ucc = WKUserContentController()
             ucc.add(self, name: "tt")
             ucc.addUserScript(WKUserScript(source: Self.hookScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -209,6 +211,17 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
       // what it holds. So advance like a user: ArrowDown / wheel, several times, with
       // pauses, until a new item_list lands (or we give up).
       let advancing = false;
+      // TikTok web renders a "next video" arrow (data-e2e="arrow-right" / class *ButtonBasicButtonContainer* with a down chevron).
+      const nextButton = () =>
+        document.querySelector('[data-e2e="arrow-right"], button[aria-label*="next" i], button[aria-label*="Next" i], [class*="ButtonBasicButtonContainer"]:last-of-type');
+      const feedRoot = () =>
+        document.querySelector('[data-e2e="recommend-list-item-container"]')?.parentElement
+        || document.querySelector('[class*="DivVideoFeedV2"], [class*="DivVideoFeed"], [class*="DivRecommendListContainer"]')
+        || document.scrollingElement;
+      const fireWheel = (el, dy) => {
+        const r = el.getBoundingClientRect();
+        el.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true }));
+      };
       window.__cartvScroll = function () {
         if (advancing) return; advancing = true;
         const before = window.__cartvCaptures || 0;
@@ -216,14 +229,22 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
         const step = () => {
           steps++;
           try {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true }));
-            const feed = document.querySelector('[data-e2e="recommend-list-item-container"], [class*="DivVideoFeed"], main') || document.scrollingElement;
-            feed.dispatchEvent(new WheelEvent('wheel', { deltaY: 600, bubbles: true, cancelable: true }));
-            window.scrollBy(0, window.innerHeight);
+            const btn = nextButton();
+            if (btn) { btn.click(); }
+            const root = feedRoot();
+            fireWheel(root, 900);                                  // React listens on the feed root
+            fireWheel(document.documentElement, 900);
+            document.activeElement && document.activeElement.blur && document.activeElement.blur();
+            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true }));
+            window.scrollBy({ top: window.innerHeight, behavior: 'instant' });
           } catch (e) {}
           const got = (window.__cartvCaptures || 0) > before;
-          if (got || steps >= 12) { advancing = false; post({ kind: 'log', msg: 'advance ' + (got ? 'captured' : 'gave up') + ' after ' + steps }); return; }
-          setTimeout(step, 350);
+          if (got || steps >= 20) {
+            advancing = false;
+            post({ kind: 'log', msg: 'advance ' + (got ? 'captured' : 'gave up') + ' after ' + steps + ' (btn=' + !!nextButton() + ')' });
+            return;
+          }
+          setTimeout(step, 300);
         };
         step();
       };

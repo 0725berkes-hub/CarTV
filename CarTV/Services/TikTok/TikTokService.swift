@@ -117,7 +117,7 @@ final class TikTokService {
         guard session.isSignedIn, !loading.contains(feed) else { return }
         loading.insert(feed)
         let target = engineTarget(feed)
-        if engine.currentFeed != target { engine.load(target) } else { engine.requestMore() }
+        if engine.currentFeed.path != target.path { engine.load(target) } else { engine.requestMore() }
         // If nothing arrives in 12 s the page is stuck (captcha, login wall, network). Surface it.
         waitTimers[feed]?.cancel()
         waitTimers[feed] = Task { @MainActor [weak self] in
@@ -161,6 +161,8 @@ final class TikTokService {
     private func append(_ new: [TTVideo], to feed: Feed) {
         var list = items(for: feed)
         for v in new where !seen.contains(v.id) { seen.insert(v.id); list.append(v) }
+        // Saved/Liked are archives: newest first. Feeds keep server order.
+        if feed == .saved || feed == .liked { list.sort { $0.createTime > $1.createTime } }
         switch feed { case .forYou: forYou = list; case .following: following = list; case .saved: saved = list; case .liked: liked = list }
     }
 

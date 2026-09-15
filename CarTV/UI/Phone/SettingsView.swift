@@ -118,6 +118,20 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://kurdsoft.dev/cartv/privacy")!) { Label("Privacy Policy", systemImage: "hand.raised") }
                     Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) { Label("Terms of Use (EULA)", systemImage: "doc.text") }
                 }
+
+                Section {
+                    HStack(spacing: 4) {
+                        Spacer()
+                        Text("Made with ❤️ by").foregroundStyle(Theme.inkMuted)
+                        Link(destination: URL(string: "https://instagram.com/sahnd.hamzani")!) {
+                            Text("@sahnd.hamzani").fontWeight(.semibold).foregroundStyle(Theme.accent)
+                        }
+                        Spacer()
+                    }
+                    .font(Theme.Font.caption)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 12, trailing: 0))
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
