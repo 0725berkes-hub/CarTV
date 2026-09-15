@@ -165,3 +165,69 @@ struct YTDownloadStrip: View {
         }
     }
 }
+
+
+/// Top banner for download results. Attach once per screen root (phone + car).
+struct DownloadNoticeBanner: View {
+    @Environment(AppEnvironment.self) private var env
+    var compact = false
+    var body: some View {
+        Group {
+            if let n = env.downloads.notice {
+                HStack(spacing: 10) {
+                    Image(systemName: n.ok ? "arrow.down.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(n.ok ? Theme.accent : Theme.amber)
+                    Text(n.text).font(compact ? .subheadline.weight(.semibold) : .footnote.weight(.semibold)).lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.horizontal, Theme.s4).padding(.top, compact ? Theme.s2 : Theme.s1)
+                .frame(maxWidth: compact ? 520 : .infinity)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .id(n.id)
+            }
+        }
+        .animation(.snappy, value: env.downloads.notice?.id)
+        .allowsHitTesting(false)
+    }
+}
+
+/// Car-sized download control (same folder rules; falls back to the default folder
+/// silently — there's no picker while driving).
+struct CarDownloadButton: View {
+    @Environment(AppEnvironment.self) private var env
+    let item: PlayableItem
+    var size: CGFloat = 56
+    var onTap: () -> Void = {}
+
+    var body: some View {
+        if let vid = YouTubeService.videoID(from: item.ref.id) {
+            let job = env.downloads.job(for: vid)
+            Button {
+                onTap()
+                guard job?.isActive != true else { return }
+                let folders = env.library.folders()
+                let target = folders.first(where: { $0.id == env.settings.downloadFolderID })?.id ?? folders.first?.id
+                var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
+                env.downloads.download(v, into: target)
+            } label: {
+                ZStack {
+                    if let j = job, j.isActive {
+                        Circle().stroke(.white.opacity(0.25), lineWidth: 3)
+                        Circle().trim(from: 0, to: max(0.03, j.progress)).stroke(Theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
+                        Text("\(Int(j.progress * 100))").font(.system(size: size * 0.22, weight: .bold)).foregroundStyle(.white).monospacedDigit()
+                    } else {
+                        Image(systemName: job?.phase == .done ? "checkmark.circle.fill" : "arrow.down.to.line")
+                            .font(.system(size: size * 0.38, weight: .semibold))
+                            .foregroundStyle(job?.phase == .done ? Theme.accent : .white)
+                    }
+                }
+                .frame(width: size * 0.5, height: size * 0.5).frame(width: size, height: size)
+                .contentShape(Circle())
+            }
+            .buttonStyle(CarPressStyle())
+            .glassEffect(.regular.interactive(), in: Circle())
+        }
+    }
+}

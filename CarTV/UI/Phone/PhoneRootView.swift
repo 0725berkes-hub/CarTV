@@ -50,8 +50,10 @@ struct PhoneRootView: View {
         .tabBarMinimizeBehavior(.never)
         .tint(Theme.accent)
         .preferredColorScheme(settings.appearance.colorScheme)
+        .overlay(alignment: .top) { DownloadNoticeBanner() }
         .fullScreenCover(isPresented: $playerShown) {
             PlayerView()
+                .overlay(alignment: .top) { DownloadNoticeBanner() }
                 // Clear backing so the swipe-down collapse reveals the app underneath
                 // instead of a black slab. PlayerView paints its own dimming layer.
                 .presentationBackground(.clear)

@@ -88,7 +88,11 @@ nonisolated enum HLSBuilder {
         }
         var req = URLRequest(url: f.url)
         req.setValue("bytes=\(idx.lowerBound)-\(idx.upperBound)", forHTTPHeaderField: "Range")
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            Log.network.error("YT SIDX itag \(f.itag) HTTP \(http.statusCode) n=\(YTChallengeSolver.nParam(of: f.url) ?? "-", privacy: .public)")
+            throw YTError.network("HTTP \(http.statusCode)")
+        }
         let parsed = SIDX.parse(data)
         guard !parsed.isEmpty else {
             let dur = Double(f.approxDurationMs ?? 0) / 1000

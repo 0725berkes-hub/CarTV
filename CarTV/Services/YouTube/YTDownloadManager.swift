@@ -23,6 +23,15 @@ final class YTDownloadManager {
     }
 
     private(set) var jobs: [Job] = []
+    /// One-line result shown as a banner by the UI (auto-cleared).
+    private(set) var notice: (text: String, ok: Bool, id: UUID)?
+    private func post(_ text: String, ok: Bool) {
+        notice = (text, ok, UUID())
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3.5))
+            if let self, self.notice?.text == text { self.notice = nil }
+        }
+    }
     private var tasks: [String: Task<Void, Never>] = [:]
 
     func job(for videoID: String) -> Job? { jobs.first { $0.id == videoID } }
@@ -37,6 +46,7 @@ final class YTDownloadManager {
         if let existing = job(for: video.id), existing.isActive { return }
         jobs.removeAll { $0.id == video.id }
         jobs.insert(Job(id: video.id, title: video.title, thumbnailURL: video.thumbnailURL), at: 0)
+        post(String(localized: "Downloading “\(video.title.nilIfEmpty ?? video.id)”"), ok: true)
         let title = video.title.nilIfEmpty ?? video.id
         tasks[video.id] = Task { [weak self] in
             guard let self else { return }
@@ -47,12 +57,14 @@ final class YTDownloadManager {
                 let summary = await importer.importMovieFiles([(url: file, title: title)], into: folderID) { _ in }
                 guard summary.imported > 0 else { throw YTError.unavailable(String(localized: "Could not add the file to your library")) }
                 self.update(video.id) { $0.phase = .done; $0.progress = 1 }
+                self.post(String(localized: "Saved “\(title)” to your videos"), ok: true)
                 Log.media.info("YT download done: \(title, privacy: .public)")
             } catch is CancellationError {
                 self.jobs.removeAll { $0.id == video.id }
             } catch {
                 Log.media.error("YT download failed \(video.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 self.update(video.id) { $0.phase = .failed(error.localizedDescription) }
+                self.post(String(localized: "Download failed: \(error.localizedDescription)"), ok: false)
             }
             self.tasks[video.id] = nil
         }
@@ -80,12 +92,18 @@ final class YTDownloadManager {
         try? FileManager.default.removeItem(at: tmp)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
 
-        // 1. Our own stream resolution.
-        do {
-            let resp = try await InnerTubeClient.shared.player(videoID: videoID, accessToken: await env.youtube.auth.token())
-            if let out = try await downloadFromFormats(resp, into: tmp, videoID: videoID) { return out }
-        } catch {
-            Log.media.notice("YT download: own streams unavailable (\(error.localizedDescription, privacy: .public))")
+        // 1. Our own stream resolution (one retry with a freshly solved player on 4xx).
+        for attempt in 0..<2 {
+            do {
+                if attempt == 1 { await YTChallengeSolver.shared.reset() }
+                let resp = try await InnerTubeClient.shared.player(videoID: videoID, accessToken: await env.youtube.auth.token())
+                if let out = try await downloadFromFormats(resp, into: tmp, videoID: videoID) { return out }
+                break
+            } catch is CancellationError { throw CancellationError() }
+            catch {
+                Log.media.notice("YT download attempt \(attempt + 1): \(error.localizedDescription, privacy: .public)")
+                if !error.localizedDescription.contains("HTTP 4") { break }
+            }
         }
 
         // 2. RapidAPI fallback, if configured.
@@ -105,6 +123,12 @@ final class YTDownloadManager {
         let best = videos.last
         let progressive = resp.progressiveFormats.first { ($0.height ?? 0) <= cap }
 
+        // Probe the first KB so a refused URL fails fast (and triggers the re-solve) before writing anything.
+        if let probe = best ?? progressive {
+            var req = URLRequest(url: probe.url); req.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+            let (_, r) = try await URLSession.shared.data(for: req)
+            if let h = r as? HTTPURLResponse, !(200..<300).contains(h.statusCode) { throw YTError.network("HTTP \(h.statusCode) while downloading") }
+        }
         // A progressive file saves the mux step when it isn't much worse than the best adaptive one.
         if let p = progressive, best == nil || (p.height ?? 0) >= (best?.height ?? 0) {
             let dest = tmp.appending(path: "video.mp4")

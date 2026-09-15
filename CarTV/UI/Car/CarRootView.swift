@@ -58,7 +58,7 @@ struct CarRootView: View {
     var body: some View {
         GeometryReader { geo in
             let metrics = CarMetrics(size: geo.size)
-            ZStack {
+            ZStack(alignment: .top) {
                 Theme.ground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -97,6 +97,7 @@ struct CarRootView: View {
                                                 removal: .scale(scale: 0.96).combined(with: .opacity)))
                         .zIndex(1)
                 }
+                DownloadNoticeBanner(compact: true).zIndex(2)
             }
             .environment(\.carMetrics, metrics)
         }

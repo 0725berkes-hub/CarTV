@@ -108,6 +108,9 @@ struct CarPlayerView: View {
                                 }
                             }
                             CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
+                            if let item = playback.current, item.ref.kind == .youtube {
+                                CarDownloadButton(item: item, size: small) { bump() }
+                            }
                             if !playback.qualityVariants.isEmpty {
                                 Button { withAnimation(.snappy(duration: 0.25)) { qualityOpen.toggle() }; hideTask?.cancel() } label: {
                                     Text(playback.qualityLabel).font(.system(size: m.compact ? 12 : 14, weight: .bold)).foregroundStyle(.white)

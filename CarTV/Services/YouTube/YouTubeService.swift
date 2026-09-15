@@ -161,13 +161,23 @@ final class YouTubeService {
             AppEnvironment.shared.playback.pendingQualityVariants = r.variants
             return r
         }
-        let resp = try await api.player(videoID: video.id, accessToken: await auth.token())
+        var resp = try await api.player(videoID: video.id, accessToken: await auth.token())
         let url: URL
         var variants: [(Int, String)] = []
         if let hls = resp.hlsManifestURL {
             url = hls
         } else if !resp.avVideoFormats.isEmpty, resp.bestDefaultAudio != nil {
-            let built = try await HLSBuilder.build(resp)
+            var built: HLSBuilder.Result
+            do {
+                built = try await HLSBuilder.build(resp)
+            } catch YTError.network(let msg) where msg.hasPrefix("HTTP 4") {
+                // A stale/invalid challenge solution → Google refuses the range. Drop the
+                // cached player + solutions and do the whole thing once more.
+                Log.network.notice("YT streams refused (\(msg, privacy: .public)); re-solving with a fresh player")
+                await YTChallengeSolver.shared.reset()
+                resp = try await api.player(videoID: video.id, accessToken: await auth.token())
+                built = try await HLSBuilder.build(resp)
+            }
             url = built.masterURL
             variants = built.variants.map { ($0.height, $0.label) }
         } else if let prog = resp.progressiveFormats.first {
