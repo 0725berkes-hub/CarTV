@@ -86,24 +86,25 @@ nonisolated final class LocalImporter: Sendable {
             }
         }
 
-        // Stage 2 — metadata + thumbnail + row, a few at a time.
+        // Stage 2 — metadata + thumbnail + row, three at a time. Index-driven so the
+        // only things each child task captures are immutable values.
         var imported = 0
+        let jobs = staged
         await withTaskGroup(of: Bool.self) { group in
-            var it = staged.makeIterator()
-            var inFlight = 0
-            func addNext() {
-                guard let s = it.next() else { return }
-                inFlight += 1
-                group.addTask { await self.record(dest: s.dest, id: s.id, relative: s.relative, title: s.title, folderID: targetFolder) }
-            }
-            for _ in 0..<3 { addNext() }
+            var next = 0
             var done = 0
+            while next < min(3, jobs.count) {
+                let j = jobs[next]; next += 1
+                group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: targetFolder) }
+            }
             for await ok in group {
-                inFlight -= 1
                 done += 1
                 if ok { imported += 1 } else { skipped += 1 }
-                await progress(.importing(done: files.count - staged.count + done, total: files.count, name: String(localized: "Preparing…")))
-                addNext()
+                await progress(.importing(done: files.count - jobs.count + done, total: files.count, name: String(localized: "Preparing…")))
+                if next < jobs.count {
+                    let j = jobs[next]; next += 1
+                    group.addTask { await self.record(dest: j.dest, id: j.id, relative: j.relative, title: j.title, folderID: targetFolder) }
+                }
             }
         }
         await progress(.idle)
@@ -228,17 +229,20 @@ struct TransferableMovie: Transferable {
 enum VideoThumbnailer {
     /// Returns the relative path of the written JPEG, or nil.
     nonisolated static func generate(for url: URL, id: UUID, duration: TimeInterval) async -> String? {
-        let asset = AVURLAsset(url: url)
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 800, height: 800)
         let t = duration.isFinite && duration > 0 ? min(duration * 0.15, 30) : 1
-        gen.requestedTimeToleranceBefore = CMTime(seconds: 2, preferredTimescale: 600)
-        gen.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
         do {
             // A bad file can make AVFoundation sit forever. 8 s is plenty for a keyframe.
+            // The generator is built inside the child task so nothing non-Sendable
+            // crosses the task boundary — only the URL and the time do.
             let cg = try await withThrowingTaskGroup(of: CGImage.self) { group in
-                group.addTask { try await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image }
+                group.addTask {
+                    let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                    gen.appliesPreferredTrackTransform = true
+                    gen.maximumSize = CGSize(width: 800, height: 800)
+                    gen.requestedTimeToleranceBefore = CMTime(seconds: 2, preferredTimescale: 600)
+                    gen.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
+                    return try await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image
+                }
                 group.addTask { try await Task.sleep(for: .seconds(8)); throw CancellationError() }
                 let first = try await group.next()!
                 group.cancelAll()
