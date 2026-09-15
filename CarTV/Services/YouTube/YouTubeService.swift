@@ -18,7 +18,7 @@ final class YouTubeService {
     private let api = InnerTubeClient.shared
 
     // Resolved stream cache: videoID → (playable URL, expiry)
-    private var streamCache: [String: (url: URL, expires: Date, variants: [(Int, String)])] = [:]
+    private var streamCache: [String: (url: URL, expires: Date, variants: [(Int, String)], tracking: (URL?, URL?))] = [:]
     private var pageCache: [String: (page: YTPage, at: Date)] = [:]
     private let pageTTL: TimeInterval = 600
 

@@ -607,6 +607,12 @@ final class PlaybackController {
     private func persistProgress(force: Bool) {
         // Shorts don't get resume points; they'd flood Continue Watching.
         guard let item = current, !item.isLive, item.ref.kind != .tiktok, snapshot.duration > 0 else { return }
+        // YouTube history / cross-device resume: mirror what YouTube's clients report.
+        if item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
+            let h = AppEnvironment.shared.youtube.history
+            if force { h.flush(videoID: vid, position: snapshot.position, duration: snapshot.duration) }
+            else { h.tick(videoID: vid, position: snapshot.position, duration: snapshot.duration, playing: isPlaying) }
+        }
         guard force || abs(snapshot.position - lastSavedPosition) >= 4 else { return }
         lastSavedPosition = snapshot.position
         progress.record(item.ref, position: snapshot.position, duration: snapshot.duration)
