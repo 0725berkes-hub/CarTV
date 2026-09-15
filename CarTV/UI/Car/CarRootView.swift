@@ -62,12 +62,8 @@ struct CarRootView: View {
             let scale = CarMetrics.scale(for: geo.size)
             let layout = CarMetrics.layoutSize(for: geo.size)
             let metrics = CarMetrics(size: layout)
-            // Safe-area insets are in screen points; inside the scaled tree they must be
-            // in layout points, so re-apply them as padding ourselves.
-            let insets = EdgeInsets(top: geo.safeAreaInsets.top / scale, leading: geo.safeAreaInsets.leading / scale,
-                                    bottom: geo.safeAreaInsets.bottom / scale, trailing: geo.safeAreaInsets.trailing / scale)
             ZStack(alignment: .top) {
-                Theme.ground
+                Theme.ground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     CarHeader(
@@ -117,16 +113,13 @@ struct CarRootView: View {
                 }
                 DownloadNoticeBanner(compact: true).zIndex(2)
             }
-            .padding(insets)
-            // Small display → lay out at the design size, shrink the whole tree to fit.
-            .frame(width: layout.width + insets.leading + insets.trailing, height: layout.height + insets.top + insets.bottom)
+            // Small display → lay out at the design size, shrink the whole tree to fit
+            // the safe area (the CarPlay sidebar is outside it and must stay untouched).
+            .frame(width: layout.width, height: layout.height)
             .scaleEffect(scale, anchor: .topLeading)
-            .frame(width: geo.size.width + geo.safeAreaInsets.leading + geo.safeAreaInsets.trailing,
-                   height: geo.size.height + geo.safeAreaInsets.top + geo.safeAreaInsets.bottom, alignment: .topLeading)
-            .offset(x: -geo.safeAreaInsets.leading, y: -geo.safeAreaInsets.top)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .environment(\.carMetrics, metrics)
             .background(Theme.ground.ignoresSafeArea())
-            .ignoresSafeArea()
         }
         .preferredColorScheme(settings.appearance.colorScheme ?? (car.contentStyle == .light ? .light : .dark))
         .onChange(of: playback.current?.id) { old, new in
