@@ -6,7 +6,7 @@ nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
     let ref: PlayableRef
     let title: String
     let subtitle: String?
-    let url: URL
+    var url: URL
     let artworkURL: URL?
     let headers: [String: String]
     let genre: Genre?

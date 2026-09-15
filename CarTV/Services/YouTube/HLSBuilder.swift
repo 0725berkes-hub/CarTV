@@ -55,14 +55,21 @@ nonisolated enum HLSBuilder {
             variants.append((v.height ?? 0, v.qualityLabel ?? "\(v.height ?? 0)p"))
         }
 
-        let master = """
-        #EXTM3U
-        #EXT-X-VERSION:7
-        #EXT-X-INDEPENDENT-SEGMENTS
-        #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="\(audio.language ?? "Audio")",DEFAULT=YES,AUTOSELECT=YES,URI="\(audioName)"
-        \(variantLines.joined(separator: "\n"))
-        """
-        try master.write(to: dir.appending(path: "master.m3u8"), atomically: true, encoding: .utf8)
+        func master(_ lines: [String]) -> String {
+            """
+            #EXTM3U
+            #EXT-X-VERSION:7
+            #EXT-X-INDEPENDENT-SEGMENTS
+            #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="\(audio.language ?? "Audio")",DEFAULT=YES,AUTOSELECT=YES,URI="\(audioName)"
+            \(lines.joined(separator: "\n"))
+            """
+        }
+        // Auto = every variant; plus one single-variant master per height so a manual
+        // pick is exact (AVPlayer's preferredMaximumResolution is only an upper bound).
+        try master(variantLines).write(to: dir.appending(path: "master.m3u8"), atomically: true, encoding: .utf8)
+        for (line, v) in zip(variantLines, variants) {
+            try master([line]).write(to: dir.appending(path: "master-\(v.0).m3u8"), atomically: true, encoding: .utf8)
+        }
         let base = try await LocalPlaylistServer.shared.start()
         let masterURL = base.appending(path: resp.videoID).appending(path: "master.m3u8")
         Log.player.info("HLS built for \(resp.videoID, privacy: .public): \(variants.count) variants → \(masterURL.absoluteString, privacy: .public)")

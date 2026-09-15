@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum PhoneTab: Hashable { case home, youtube, library }
+enum PhoneTab: Hashable { case home, favorites, youtube, library }
 
 struct PhoneRootView: View {
     @Environment(AppEnvironment.self) private var env
@@ -15,12 +15,14 @@ struct PhoneRootView: View {
     @State private var moreSheet: MoreSheet?
 
     var body: some View {
-        // Three tabs you live in. Favorites is a shelf on Home and a row in Library
-        // (it's a filter, not a place). Cast and Settings are tools you visit, so
-        // they're a menu on every tab's toolbar that opens a sheet.
+        // Four tabs: Home, Favorites, YouTube, Library. Cast and Settings are tools
+        // you visit, so they're a menu on every tab's toolbar that opens a sheet.
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house.fill", value: .home) {
                 HomeView(showAddSource: $showAddSource)
+            }
+            Tab("Favorites", systemImage: "heart.fill", value: .favorites) {
+                NavigationStack { FavoritesView() }
             }
             Tab("YouTube", systemImage: "play.rectangle.fill", value: .youtube) {
                 YouTubeTab()

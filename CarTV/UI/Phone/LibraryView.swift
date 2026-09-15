@@ -131,7 +131,7 @@ struct LibraryView: View {
         let _ = env.favorites.revision
         let count = env.favorites.favoriteItems().count
         Section {
-            NavigationLink { FavoritesView() } label: {
+            NavigationLink { FavoritesView(isTabRoot: false) } label: {
                 HStack(spacing: Theme.s3) {
                     Image(systemName: "heart.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.live).frame(width: 32)
                     VStack(alignment: .leading, spacing: 2) {

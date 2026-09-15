@@ -94,14 +94,22 @@ final class PlaybackController {
     }
 
     private func applyQuality() {
-        // Pinning a height = capping the peak bitrate at that variant's bitrate and
-        // forbidding higher resolutions. Auto = no caps.
         guard let av = engine as? AVPlayerEngine else { return }
-        if let h = selectedQualityHeight, !qualityVariants.isEmpty {
-            av.setMaxResolution(height: h)
-        } else {
-            av.setMaxResolution(height: nil)
-        }
+        let pinned = selectedQualityHeight.flatMap { h in qualityVariants.contains { $0.height == h } ? h : nil }
+        av.setMaxResolution(height: pinned)
+        // Our own YouTube HLS has one master per height: swap to it so the pick is
+        // exact (and can go *up*, which a resolution cap never does).
+        guard let item = current, item.ref.kind == .youtube,
+              item.url.host == "127.0.0.1", item.url.lastPathComponent.hasPrefix("master") else { return }
+        let want = pinned.map { "master-\($0).m3u8" } ?? "master.m3u8"
+        guard item.url.lastPathComponent != want else { return }
+        let url = item.url.deletingLastPathComponent().appending(path: want)
+        let at = snapshot.position
+        var swapped = item; swapped.url = url
+        current = swapped
+        if let i = queue.firstIndex(where: { $0.id == item.id }) { queue[i] = swapped }
+        Log.player.info("Quality → \(want, privacy: .public) at \(Int(at))s")
+        start(on: .avPlayer, item: swapped, startAt: at > 1 ? at : nil)
     }
 
     /// Bumped whenever surface ownership may change (car connects, car player shows/hides).

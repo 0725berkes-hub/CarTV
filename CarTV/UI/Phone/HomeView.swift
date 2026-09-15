@@ -297,7 +297,7 @@ struct FavoritesShelf: View {
                     .padding(.horizontal, Theme.s4)
                 }
             }
-            .navigationDestination(isPresented: $showAllFavorites) { FavoritesView() }
+            .navigationDestination(isPresented: $showAllFavorites) { FavoritesView(isTabRoot: false) }
         }
     }
 }

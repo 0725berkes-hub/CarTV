@@ -2,6 +2,8 @@ import SwiftUI
 
 struct FavoritesView: View {
     @Environment(AppEnvironment.self) private var env
+    /// True when shown as the Favorites tab; false when pushed from Home / Library.
+    var isTabRoot = true
 
     var body: some View {
         Group {
@@ -17,6 +19,7 @@ struct FavoritesView: View {
         .background(Theme.ground.ignoresSafeArea())
         .navigationTitle("Favorites")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { if isTabRoot { ToolbarItem(placement: .topBarLeading) { MoreToolbarMenu() } } }
     }
 }
 
