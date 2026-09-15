@@ -210,6 +210,7 @@ final class PlaybackController {
             self.subtitles.reset(for: item)
             self.progress.touch(item.ref)
             if self.queue.count <= 1, let siblings = self.siblingsProvider?(item), siblings.count > 1 { self.queue = siblings }
+            self.ensureYouTubeUpNext(after: item)
             if origin == .phone, self.carIsConnected { AppEnvironment.shared.carPlay.showOnCarScreen() }
         }
     }
@@ -351,7 +352,7 @@ final class PlaybackController {
                 self.start(on: .avPlayer, item: fresh, startAt: resumeAt > 1 ? resumeAt : nil)
             } catch {
                 self.isFallingBack = false
-                self.snapshot = PlayerSnapshot(state: .failed(.network(String(localized: "YouTube limited this stream. Tap Retry to resume from here."))))
+                self.snapshot = PlayerSnapshot(state: .failed(.network(error.localizedDescription)))
             }
         }
     }
@@ -363,6 +364,25 @@ final class PlaybackController {
     }
 
     private var origin: PlaybackOrigin { isPhonePlayerPresented ? .phone : .car }
+
+    /// YouTube: when the current video is the last thing in the queue, fetch
+    /// YouTube's own "up next" for it so Next (phone, car, lock screen, Finished
+    /// card) always has somewhere to go — like a normal video in a playlist.
+    private func ensureYouTubeUpNext(after item: PlayableItem) {
+        guard item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) else { return }
+        guard let i = queue.firstIndex(where: { $0.id == item.id }), i >= queue.count - 1 else { return }
+        Task { @MainActor [weak self] in
+            guard let self, let w = try? await AppEnvironment.shared.youtube.watch(vid), !w.related.isEmpty else { return }
+            guard self.current?.id == item.id else { return }
+            let yt = AppEnvironment.shared.youtube
+            w.related.forEach { yt.remember($0) }
+            let ids = Set(self.queue.map(\.id))
+            let more = w.related.compactMap { yt.cachedStub($0.id) }.filter { !ids.contains($0.id) }
+            guard !more.isEmpty else { return }
+            self.queue.append(contentsOf: more.prefix(20))
+            Log.player.info("YouTube up next: +\(more.count) for \(item.title, privacy: .public)")
+        }
+    }
 
     /// Replace the up-next queue without interrupting the current item.
     func setQueue(_ items: [PlayableItem]) {
@@ -490,12 +510,15 @@ final class PlaybackController {
             // where the user was; otherwise show a clear, stay-put error.
             if let item = current, item.ref.kind == .youtube {
                 let at = max(snapshot.position, lastSeekTarget)
-                if !attemptedYouTubeRefresh {
+                // Only a refused *stream* (403/404 → authRequired/unreachable) warrants a
+                // fresh URL; a decode/stall failure gets an honest message instead.
+                let refused = failure == .authRequired || failure == .unreachable
+                if refused, !attemptedYouTubeRefresh {
                     attemptedYouTubeRefresh = true
                     Log.player.notice("YouTube stream refused (\(failure.message, privacy: .public)); refreshing URL at \(Int(at))s")
                     refreshYouTubeStream(item: item, resumeAt: at)
                 } else {
-                    snapshot.state = .failed(.network(String(localized: "YouTube limited this stream. Tap Retry to resume from here.")))
+                    Log.player.error("YouTube playback failed: \(failure.message, privacy: .public)")
                     isFallingBack = false
                 }
                 return

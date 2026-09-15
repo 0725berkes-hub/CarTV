@@ -154,6 +154,9 @@ struct PlayerView: View {
                         }
                     }
                     ControlButton(symbol: playback.gravity.symbol) { playback.cycleGravity(); scheduleHide() }
+                    if let item = playback.current, item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
+                        PlayerDownloadButton(videoID: vid, item: item) { hideTask?.cancel() }
+                    }
                     if playback.current?.ref.kind == .localVideo {
                         ControlButton(symbol: "shuffle", tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); scheduleHide() }
                         ControlButton(symbol: playback.repeatMode.symbol, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); scheduleHide() }
@@ -533,5 +536,50 @@ struct QualityMenuItems: View {
                 HStack { Text(v.label); if playback.selectedQualityHeight == v.height { Spacer(); Image(systemName: "checkmark") } }
             }
         }
+    }
+}
+
+
+/// Download control inside the full-screen player: idle → arrow; active → ring with %.
+private struct PlayerDownloadButton: View {
+    @Environment(AppEnvironment.self) private var env
+    let videoID: String
+    let item: PlayableItem
+    let onTap: () -> Void
+    @State private var askFolder = false
+
+    var body: some View {
+        let job = env.downloads.job(for: videoID)
+        Button {
+            onTap()
+            if job?.isActive == true { return }
+            let folders = env.library.folders()
+            if let id = env.settings.downloadFolderID, folders.contains(where: { $0.id == id }) { start(id) }
+            else if folders.count <= 1 { env.settings.downloadFolderID = folders.first?.id; start(folders.first?.id) }
+            else { askFolder = true }
+        } label: {
+            ZStack {
+                if let j = job, j.isActive {
+                    Circle().stroke(.white.opacity(0.25), lineWidth: 2.5)
+                    Circle().trim(from: 0, to: max(0.03, j.progress)).stroke(Theme.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90))
+                    Text("\(Int(j.progress * 100))").font(.system(size: 9, weight: .bold)).foregroundStyle(.white).monospacedDigit()
+                } else {
+                    Image(systemName: job?.phase == .done ? "checkmark.circle.fill" : "arrow.down.to.line")
+                        .font(.system(size: 17, weight: .semibold)).foregroundStyle(job?.phase == .done ? Theme.accent : .white)
+                }
+            }
+            .frame(width: 24, height: 24).frame(width: 44, height: 44)
+        }
+        .glassEffect(.regular.interactive(), in: Circle())
+        .confirmationDialog("Download to", isPresented: $askFolder, titleVisibility: .visible) {
+            ForEach(env.library.folders()) { f in Button(f.name) { env.settings.downloadFolderID = f.id; start(f.id) } }
+            Button("Videos (no folder)") { env.settings.downloadFolderID = nil; start(nil) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func start(_ folder: UUID?) {
+        var v = YTVideo(id: videoID, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
+        env.downloads.download(v, into: folder)
     }
 }

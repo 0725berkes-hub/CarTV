@@ -114,3 +114,54 @@ struct YTDownloadsList: View {
         }
     }
 }
+
+
+/// Slim, glass progress strip shown only while a download runs; lingers 2.5s on
+/// completion, then slides away. Tap ✕ to cancel.
+struct YTDownloadStrip: View {
+    @Environment(AppEnvironment.self) private var env
+    @State private var lingering: YTDownloadManager.Job?
+
+    private var shown: YTDownloadManager.Job? { env.downloads.active.first ?? lingering }
+
+    var body: some View {
+        Group {
+            if let j = shown {
+                HStack(spacing: Theme.s3) {
+                    RemoteImage(url: j.thumbnailURL, targetSize: CGSize(width: 160, height: 90), contentMode: .fill) { Theme.raised }
+                        .frame(width: 48, height: 27).clipShape(RoundedRectangle(cornerRadius: 5))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(j.title).font(.footnote.weight(.semibold)).lineLimit(1)
+                        switch j.phase {
+                        case .done: Text("Saved to your videos").font(.caption2).foregroundStyle(Theme.accent)
+                        case .failed(let e): Text(e).font(.caption2).foregroundStyle(Theme.live).lineLimit(1)
+                        case .muxing: Text("Combining…").font(.caption2).foregroundStyle(Theme.inkMuted)
+                        case .importing: Text("Adding to library…").font(.caption2).foregroundStyle(Theme.inkMuted)
+                        default: ProgressView(value: j.progress).tint(Theme.accent).frame(height: 4)
+                        }
+                    }
+                    if j.isActive {
+                        Text("\(Int(j.progress * 100))%").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.inkMuted)
+                        Button { env.downloads.cancel(j.id) } label: { Image(systemName: "xmark").font(.caption.weight(.bold)).frame(width: 28, height: 28) }
+                            .buttonStyle(.plain).foregroundStyle(Theme.inkMuted)
+                    } else {
+                        Image(systemName: j.phase == .done ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(j.phase == .done ? Theme.accent : Theme.live)
+                    }
+                }
+                .padding(.horizontal, Theme.s3).padding(.vertical, Theme.s2)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.horizontal, Theme.s4).padding(.bottom, Theme.s2)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: shown?.id)
+        .onChange(of: env.downloads.jobs.map { "\($0.id)\($0.phase)" }) { _, _ in
+            // When the active one finishes, hold it briefly so the user sees the result.
+            if env.downloads.active.isEmpty, let last = env.downloads.jobs.first, !last.isActive {
+                lingering = last
+                Task { try? await Task.sleep(for: .seconds(2.5)); if env.downloads.active.isEmpty { lingering = nil } }
+            }
+        }
+    }
+}

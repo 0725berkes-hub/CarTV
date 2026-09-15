@@ -130,9 +130,11 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
             onMain { guard let self, self.generation == gen else { return }; self.tick(seconds) }
         }
 
-        // Fail-fast: if nothing has rendered in 12s, hand off to VLC.
+        // Fail-fast: if nothing has rendered in 12s, hand off to VLC. YouTube's
+        // segmented VOD needs the first video + audio byte ranges; give it longer.
         stallTimer?.invalidate()
-        stallTimer = Timer.scheduledTimer(withTimeInterval: 12, repeats: false) { @Sendable [weak self] _ in
+        let stallAfter: TimeInterval = playable.ref.kind == .youtube ? 30 : 12
+        stallTimer = Timer.scheduledTimer(withTimeInterval: stallAfter, repeats: false) { @Sendable [weak self] _ in
             onMain {
                 guard let self, self.generation == gen, !self.hasEverPlayed else { return }
                 self.fail(with: nil, reason: .unsupportedFormat)
@@ -249,6 +251,16 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         if s.duration == 0, knownDuration > 0 { s.duration = knownDuration }
         s.isSeekable = s.duration > 0 || seekableWindow > 30
         if s.videoSize == .zero, item.presentationSize != .zero { s.videoSize = item.presentationSize }
+
+        // The clock is the ground truth. If time is advancing and the player says it's
+        // playing, we're playing — regardless of what the last KVO said. KVO on
+        // timeControlStatus coalesces, so a brief .waiting can be the last thing we
+        // heard while video has long since resumed. That's the stuck "Loading…" bug.
+        if (s.state == .buffering || s.state == .loading), player.rate > 0, player.timeControlStatus == .playing {
+            if !hasEverPlayed { hasEverPlayed = true; player.automaticallyWaitsToMinimizeStalling = true }
+            stallTimer?.invalidate()
+            s.state = .playing
+        }
         snapshot = s
     }
 

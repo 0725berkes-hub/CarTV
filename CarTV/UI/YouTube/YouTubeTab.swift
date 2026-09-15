@@ -38,6 +38,7 @@ struct YouTubeTab: View {
                 }
             }
             .background(Theme.ground.ignoresSafeArea())
+            .safeAreaInset(edge: .bottom) { YTDownloadStrip() }
             .navigationTitle("YouTube")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

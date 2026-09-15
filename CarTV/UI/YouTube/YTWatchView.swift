@@ -191,8 +191,9 @@ struct YTWatchView: View {
         resolveError = nil
         do {
             let r = try await env.youtube.resolve(video)
+            // Open the full-screen player right away — a tap on a video should play
+            // it, not show a page you then have to tap again.
             playback.play(r.item, queue: [r.item], origin: .phone)
-            playback.isPhonePlayerPresented = false     // keep inline; tap to go full-screen
         } catch { resolveError = error.localizedDescription }
     }
 }
