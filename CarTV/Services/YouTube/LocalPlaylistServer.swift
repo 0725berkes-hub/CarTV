@@ -79,7 +79,7 @@ actor LocalPlaylistServer {
 }
 
 /// One-shot continuation holder that's safe to resume from a Network.framework callback.
-private final class ContinuationBox: @unchecked Sendable {
+nonisolated private final class ContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var cont: CheckedContinuation<URL, Error>?
     private var pending: Result<URL, Error>?

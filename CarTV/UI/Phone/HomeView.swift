@@ -283,10 +283,10 @@ struct FavoritesShelf: View {
                     LazyHStack(spacing: Theme.s2) {
                         ForEach(items.prefix(20)) { item in
                             Button { playback.play(item, queue: items, origin: .phone, resume: true) } label: {
-                                // In a horizontal shelf all cells share one height: wide 16:9
-                                // for channels, portrait for movies/videos, both 100pt tall.
+                                // One height per shelf: 16:9 cards at 178w and 2:3 posters at
+                                // 100w are both ~100pt tall, so the row reads as one line.
                                 ItemCell(item: item)
-                                    .frame(width: item.ref.kind == .channel ? 178 : 100)
+                                    .frame(width: ItemCell.isPoster(item) ? 100 : 178)
                             }
                             .buttonStyle(.plain)
                             .contextMenu { ItemContextMenu(item: item) }
@@ -306,10 +306,10 @@ struct VideoGrid3: View {
     let videos: [LocalVideo]
     var body: some View {
         let items = videos.map(PlayableItem.init(video:))
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.s2), count: 3), spacing: Theme.s3) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.s3), count: 2), spacing: Theme.s3) {
             ForEach(Array(zip(videos, items)), id: \.1.id) { _, item in
-                Button { playback.play(item, queue: nil, origin: .phone) } label: {
-                    VideoThumbCell(item: item, progress: env.progress.progress(for: item.ref)?.fraction, isFavorite: env.favorites.isFavorite(item))
+                Button { playback.play(item, queue: nil, origin: .phone, resume: true) } label: {
+                    ItemCell(item: item)
                 }
                 .buttonStyle(.plain)
                 .contextMenu { ItemContextMenu(item: item) }

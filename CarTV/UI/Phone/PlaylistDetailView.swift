@@ -157,7 +157,7 @@ struct LocalVideosGridView: View {
     var body: some View {
         let list = sorted
         let items = list.map(PlayableItem.init(video:))
-        let cols = [GridItem(.adaptive(minimum: 104), spacing: Theme.s2)]
+        let cols = [GridItem(.adaptive(minimum: 156), spacing: Theme.s3)]
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.s4, pinnedViews: .sectionHeaders) {
                 ForEach(grouped, id: \.key) { group in
@@ -166,7 +166,7 @@ struct LocalVideosGridView: View {
                             ForEach(group.videos) { video in
                                 let item = PlayableItem(video: video)
                                 Button { playback.play(item, queue: items, origin: .phone) } label: {
-                                    VideoThumbCell(item: item, progress: env.progress.progress(for: item.ref)?.fraction, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
+                                    ItemCell(item: item)
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
