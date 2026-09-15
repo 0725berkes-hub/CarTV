@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Now-playing strip in the tab bar's bottom accessory, matched to Music/Podcasts:
-/// artwork with a soft shadow · title (+ subtitle when expanded) · play/pause · next.
-/// The accessory supplies the glass; we add nothing but content.
+/// Now-playing strip in the tab bar's bottom accessory, matched to the car's
+/// Now Playing pill: circular artwork with a green ring while playing, title
+/// over "Now Playing / Paused", glyph play/pause and next. Content only —
+/// the accessory supplies the glass.
 struct MiniPlayerBar: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
@@ -11,28 +12,40 @@ struct MiniPlayerBar: View {
 
     var body: some View {
         if let item = playback.current {
+            let art: CGFloat = expanded ? 42 : 32
             HStack(spacing: 0) {
                 Button { playback.isPhonePlayerPresented = true } label: {
-                    HStack(spacing: 12) {
-                        artwork(item)
-                            .frame(width: expanded ? 44 : 34, height: expanded ? 44 : 34)
-                            .clipShape(RoundedRectangle(cornerRadius: expanded ? 8 : 6, style: .continuous))
-                            .shadow(color: .black.opacity(0.28), radius: 6, y: 2)
+                    HStack(spacing: expanded ? 12 : 10) {
+                        ZStack {
+                            Circle().fill(TileTint.gradient(for: item.title))
+                            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 120, height: 120), contentMode: .fill) {
+                                Monogram(text: item.title, size: art * 0.36)
+                            }
+                            .frame(width: art, height: art)
+                            .clipShape(Circle())
+                            Circle().strokeBorder(playback.isPlaying ? Theme.accent : Theme.inkFaint, lineWidth: 2)
+                                .animation(.easeInOut(duration: 0.25), value: playback.isPlaying)
+                        }
+                        .frame(width: art, height: art)
+                        // Stable identity: the ring and artwork never rebuild when the
+                        // accessory changes placement — that rebuild was the flicker.
+                        .id(item.id)
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(item.title)
-                                .font(expanded ? .body.weight(.semibold) : .subheadline.weight(.semibold))
+                                .font(.system(size: expanded ? 15 : 14, weight: .semibold))
                                 .lineLimit(1)
-                            if expanded, let sub = subtitle(item) {
-                                Text(sub)
-                                    .font(.subheadline)
+                            if expanded {
+                                Text(statusLine(item))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
+                                    .contentTransition(.opacity)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.leading, expanded ? 12 : 10)
+                    .padding(.leading, expanded ? 8 : 6)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                 }
@@ -40,61 +53,46 @@ struct MiniPlayerBar: View {
                 .accessibilityLabel(Text("Now Playing: \(item.title)"))
                 .accessibilityHint(Text("Opens the player"))
 
-                // Transport: system-sized symbols, play/pause dominant, generous targets.
-                HStack(spacing: expanded ? 4 : 0) {
-                    Button { playback.togglePlayPause() } label: {
-                        Group {
-                            if playback.snapshot.state == .loading || playback.snapshot.state == .buffering {
-                                ProgressView().controlSize(.regular)
-                            } else {
-                                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: expanded ? 22 : 19, weight: .semibold))
-                                    .contentTransition(.symbolEffect(.replace))
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-
+                HStack(spacing: 0) {
+                    glyph(playback.isPlaying ? "pause.fill" : "play.fill", size: expanded ? 18 : 16, loading: isLoading) { playback.togglePlayPause() }
+                        .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
                     if expanded {
-                        Button { playback.next() } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 19, weight: .semibold))
-                                .frame(width: 44, height: 44)
-                                .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!playback.hasNext)
-                        .opacity(playback.hasNext ? 1 : 0.35)
-                        .accessibilityLabel("Next")
+                        glyph("forward.fill", size: 16) { playback.next() }
+                            .disabled(!playback.hasNext)
+                            .opacity(playback.hasNext ? 1 : 0.35)
+                            .accessibilityLabel("Next")
                     }
                 }
-                .padding(.trailing, expanded ? 6 : 2)
+                .padding(.trailing, 4)
             }
-            .frame(height: expanded ? 64 : 48)
+            .frame(height: expanded ? 60 : 46)
             .foregroundStyle(.primary)
         }
     }
 
-    private func artwork(_ item: PlayableItem) -> some View {
-        ZStack {
-            TileTint.gradient(for: item.title)
-            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 88, height: 88),
-                        contentMode: (item.isLocal || item.ref.kind != .channel) ? .fill : .fit) {
-                Monogram(text: item.title, size: 11)
+    private var isLoading: Bool { playback.snapshot.state == .loading || playback.snapshot.state == .buffering }
+
+    private func glyph(_ symbol: String, size: CGFloat, loading: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if loading { ProgressView().controlSize(.small) }
+                else { Image(systemName: symbol).font(.system(size: size, weight: .semibold)).contentTransition(.symbolEffect(.replace)) }
             }
-            .padding(item.ref.kind == .channel ? 4 : 0)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
         }
+        .buttonStyle(.plain)
     }
 
-    private func subtitle(_ item: PlayableItem) -> String? {
+    private func statusLine(_ item: PlayableItem) -> String {
         switch playback.snapshot.state {
         case .loading:   return String(localized: "Starting…")
         case .buffering: return String(localized: "Loading…")
         case .failed(let f): return f.message
-        default: return item.subtitle ?? (item.isLive ? String(localized: "Live") : nil)
+        case .paused:    return String(localized: "Paused")
+        default:
+            if let sub = item.subtitle { return sub }
+            return item.isLive ? String(localized: "Live") : String(localized: "Now Playing")
         }
     }
 }

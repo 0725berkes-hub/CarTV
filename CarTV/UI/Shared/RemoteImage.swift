@@ -10,20 +10,27 @@ struct RemoteImage<Placeholder: View>: View {
     @State private var image: UIImage?
     @State private var failed = false
 
+    /// Start from the cache synchronously so a re-created view never shows the
+    /// placeholder for an image we already have. That placeholder→image fade on
+    /// every identity change is what reads as "the artwork flickers".
+    private var initial: UIImage? {
+        guard let url else { return nil }
+        return ImageLoader.shared.cached(url, targetSize: targetSize)
+    }
+
     var body: some View {
+        let shown = image ?? initial
         ZStack {
-            if let image {
+            if let image = shown {
                 if contentMode == .fill {
                     // Let the parent decide the size; the image just fills and clips.
                     Color.clear
                         .overlay { Image(uiImage: image).resizable().scaledToFill() }
                         .clipped()
-                        .transition(.opacity.animation(.easeOut(duration: 0.18)))
                 } else {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFit()
-                        .transition(.opacity.animation(.easeOut(duration: 0.18)))
                 }
             } else {
                 placeholder()
@@ -39,7 +46,7 @@ struct RemoteImage<Placeholder: View>: View {
             failed = false
             let loaded = await ImageLoader.shared.image(for: url, targetSize: targetSize)
             if !Task.isCancelled {
-                image = loaded
+                withAnimation(.easeOut(duration: 0.18)) { image = loaded }
                 failed = loaded == nil
             }
         }
