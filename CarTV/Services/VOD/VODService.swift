@@ -92,6 +92,50 @@ final class VODService {
         return order.map { ($0, map[$0]!) }
     }
 
+    // MARK: Played episodes (so Continue Watching / History can resolve them)
+
+    /// Episodes aren't in the catalogue — only in per-season fetches. Remember every
+    /// episode that starts playing, with its series/season context, so a resume
+    /// point can rebuild the PlayableItem after relaunch. Small: last 200 plays.
+    private var played: [UUID: PlayedEpisode] = [:]
+    private var playedLoaded = false
+    nonisolated private static let playedURL = AppPaths.applicationSupport.appending(path: "vod-played.json")
+
+    nonisolated private struct PlayedEpisode: Codable, Sendable {
+        let episode: VODEpisode
+        let series: VODSeries
+        let season: VODSeason
+        let at: Date
+    }
+
+    func rememberPlayed(episodes: [VODEpisode], series: VODSeries, season: VODSeason) {
+        loadPlayedIfNeeded()
+        let now = Date()
+        for e in episodes { played[e.playableID] = PlayedEpisode(episode: e, series: series, season: season, at: now) }
+        if played.count > 200 {
+            for (k, _) in played.sorted(by: { $0.value.at < $1.value.at }).prefix(played.count - 200) { played.removeValue(forKey: k) }
+        }
+        let snapshot = played
+        Task.detached(priority: .utility) {
+            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: Self.playedURL, options: .atomic) }
+        }
+    }
+
+    func playedItem(id: UUID) -> PlayableItem? {
+        loadPlayedIfNeeded()
+        guard let p = played[id] else { return nil }
+        return PlayableItem(episode: p.episode, series: p.series, season: p.season)
+    }
+
+    private func loadPlayedIfNeeded() {
+        guard !playedLoaded else { return }
+        playedLoaded = true
+        if let data = try? Data(contentsOf: Self.playedURL),
+           let map = try? JSONDecoder().decode([UUID: PlayedEpisode].self, from: data) {
+            played = map
+        }
+    }
+
     // MARK: Lookup
 
     func movie(id: String) -> VODMovie? { movies.first { $0.id == id } }

@@ -65,6 +65,8 @@ struct HomeView: View {
     private var feed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.s6) {
+                ContinueWatchingShelf()
+
                 FavoritesShelf()
 
                 if !localVideos.isEmpty {
@@ -176,6 +178,74 @@ struct HomeSection<Content: View>: View {
 }
 
 // MARK: - Shelves
+
+/// Movies, episodes and local videos with a real resume point. Tapping resumes
+/// exactly where you stopped; swipe/long-press to remove one from the shelf.
+struct ContinueWatchingShelf: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(PlaybackController.self) private var playback
+
+    var body: some View {
+        let _ = env.progress.revision
+        let _ = env.vod.movies.count    // VOD items resolve from the in-memory catalogue
+        let items = env.progress.continueWatching(limit: 12)
+        if !items.isEmpty {
+            HomeSection(title: "Continue Watching", count: items.count, symbol: "play.circle.fill") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: Theme.s3) {
+                        ForEach(items, id: \.0.id) { item, p in
+                            Button { playback.play(item, origin: .phone, resume: true) } label: {
+                                ContinueCard(item: item, progress: p)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button { playback.play(item, origin: .phone, resume: false) } label: { Label("Start over", systemImage: "arrow.counterclockwise") }
+                                Button(role: .destructive) { env.progress.remove(item.ref) } label: { Label("Remove from Continue Watching", systemImage: "xmark") }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Theme.s4)
+                }
+            }
+        }
+    }
+}
+
+private struct ContinueCard: View {
+    let item: PlayableItem
+    let progress: WatchProgress
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .bottom) {
+                ZStack {
+                    TileTint.gradient(for: item.title)
+                    RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 480, height: 270), contentMode: .fill) {
+                        Image(systemName: "play.rectangle").font(.system(size: 28, weight: .light)).foregroundStyle(.white.opacity(0.6))
+                    }
+                    LinearGradient(colors: [.clear, .clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+                    Image(systemName: "play.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white).shadow(radius: 4)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("\((progress.duration - progress.position).clockString) left")
+                        Spacer()
+                        Text("\(Int(progress.fraction * 100))%")
+                    }
+                    .font(.system(size: 10.5, weight: .bold)).monospacedDigit().foregroundStyle(.white.opacity(0.9))
+                    ProgressBar(fraction: progress.fraction, height: 3)
+                }
+                .padding(8)
+            }
+            .frame(width: 220)
+            .aspectRatio(16/9, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
+            Text(item.title).font(Theme.Font.tile).foregroundStyle(Theme.ink).lineLimit(1)
+            if let sub = item.subtitle { Text(sub).font(Theme.Font.label).foregroundStyle(Theme.inkMuted).lineLimit(1) }
+        }
+        .frame(width: 220)
+        .contentShape(Rectangle())
+    }
+}
 
 struct FavoritesShelf: View {
     @Environment(AppEnvironment.self) private var env

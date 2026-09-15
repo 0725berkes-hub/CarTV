@@ -466,6 +466,8 @@ struct SeriesDetailView: View {
         guard let season else { return }
         let queue = episodes.map { PlayableItem(episode: $0, series: series, season: season) }
         guard let item = queue.first(where: { $0.id == ep.playableID }) else { return }
+        // Remember the whole season so auto-advance to the next episode also survives relaunch.
+        env.vod.rememberPlayed(episodes: episodes, series: series, season: season)
         playback.play(item, queue: queue, origin: .phone)
     }
 }

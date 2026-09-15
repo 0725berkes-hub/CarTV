@@ -55,7 +55,7 @@ struct CarRootView: View {
                         route: path.wrappedValue.last,
                         nowPlaying: playback.isActive ? playback.current : nil,
                         back: { withAnimation(.easeOut(duration: 0.2)) { _ = path.wrappedValue.popLast() } },
-                        openPlayer: { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
+                        openPlayer: { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
                     )
                     .padding(.horizontal, metrics.gutter)
                     .padding(.top, Theme.s3)
@@ -70,6 +70,8 @@ struct CarRootView: View {
                         }
                     }
                     .id(section)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+                    .animation(.easeOut(duration: 0.22), value: section)
                 }
 
                 if env.mirror.state == .mirroring {
@@ -77,8 +79,9 @@ struct CarRootView: View {
                         .transition(.opacity)
                         .zIndex(2)
                 } else if showPlayer {
-                    CarPlayerView { withAnimation(.easeOut(duration: 0.2)) { showPlayer = false } }
-                        .transition(.opacity)
+                    CarPlayerView { withAnimation(.snappy(duration: 0.3)) { showPlayer = false } }
+                        .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
+                                                removal: .scale(scale: 0.96).combined(with: .opacity)))
                         .zIndex(1)
                 }
             }
@@ -86,11 +89,11 @@ struct CarRootView: View {
         }
         .preferredColorScheme(settings.appearance.colorScheme ?? (car.contentStyle == .light ? .light : .dark))
         .onChange(of: playback.current?.id) { old, new in
-            if new != nil, old != new { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
-            if new == nil { withAnimation { showPlayer = false } }
+            if new != nil, old != new { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+            if new == nil { withAnimation(.snappy(duration: 0.3)) { showPlayer = false } }
         }
         .onChange(of: playback.isActive) { _, active in
-            if active, !showPlayer { withAnimation(.easeOut(duration: 0.2)) { showPlayer = true } }
+            if active, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
         .onAppear { if playback.isActive { showPlayer = true } }
     }
@@ -148,7 +151,7 @@ extension EnvironmentValues {
     var carPush: CarPush { get { self[CarPushKey.self] } set { self[CarPushKey.self] = newValue } }
 }
 
-// MARK: - Header: a plain segmented tab bar, centered. "‹ Title" replaces it when drilled in.
+// MARK: - Header: segmented tabs (or "‹ Title") + Now Playing, never overlapping.
 
 struct CarHeader: View {
     @Environment(PlaybackController.self) private var playback
@@ -159,116 +162,146 @@ struct CarHeader: View {
     let back: () -> Void
     let openPlayer: () -> Void
 
+    @Namespace private var ns
     private var h: CGFloat { m.compact ? 40 : 48 }
     private var font: Font { .system(size: m.compact ? 15 : 19, weight: .semibold) }
 
     var body: some View {
-        ZStack {
-            // Centered segment (or back pill)
-            if let route {
-                HStack {
-                    Button(action: back) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "chevron.left").font(font.weight(.bold))
-                            Text(route.title).font(font).lineLimit(1)
-                        }
-                        .foregroundStyle(Theme.ink)
-                        .padding(.leading, 14).padding(.trailing, 20)
-                        .frame(height: h)
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: Capsule())
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 0) {
-                    ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
-                        let selected = section == s
-                        Button { withAnimation(.snappy(duration: 0.25, extraBounce: 0.05)) { section = s } } label: {
-                            Text(s.title)
-                                .font(font)
-                                .foregroundStyle(selected ? Color.black : Theme.ink)
-                                .padding(.horizontal, m.compact ? 18 : 28)
-                                .frame(height: h)
-                                .background {
-                                    if selected { Capsule().fill(Theme.accent).matchedGeometryEffect(id: "seg", in: ns) }
-                                }
-                                .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .glassEffect(.regular.interactive(), in: Capsule())
-            }
+        // Tabs are centered when alone; when Now Playing is present they share the row.
+        HStack(spacing: Theme.s3) {
+            if nowPlaying == nil { Spacer(minLength: 0) }
 
-            // Now Playing pinned right
+            ZStack {
+                if let route {
+                    backPill(route)
+                        .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
+                                                removal: .move(edge: .leading).combined(with: .opacity)))
+                } else {
+                    segments
+                        .transition(.asymmetric(insertion: .scale(scale: 0.96).combined(with: .opacity),
+                                                removal: .scale(scale: 0.96).combined(with: .opacity)))
+                }
+            }
+            .animation(.snappy(duration: 0.28), value: route == nil)
+
+            Spacer(minLength: 0)
+
             if let item = nowPlaying {
-                HStack { Spacer(); CarNowPlayingPill(item: item, open: openPlayer) }
+                CarNowPlayingPill(item: item, open: openPlayer)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                            removal: .move(edge: .trailing).combined(with: .opacity)))
             }
         }
         .frame(height: h)
+        .animation(.snappy(duration: 0.32, extraBounce: 0.05), value: nowPlaying?.id)
     }
 
-    @Namespace private var ns
+    private var segments: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(CarSection.allCases), id: \.self) { (s: CarSection) in
+                let selected = section == s
+                Button {
+                    withAnimation(.snappy(duration: 0.28, extraBounce: 0.08)) { section = s }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    Text(s.title)
+                        .font(font)
+                        .foregroundStyle(selected ? Color.black : Theme.ink)
+                        .padding(.horizontal, m.compact ? 18 : 26)
+                        .frame(height: h - 8)
+                        .background {
+                            if selected {
+                                Capsule().fill(Theme.accent)
+                                    .shadow(color: Theme.accent.opacity(0.35), radius: 8, y: 2)
+                                    .matchedGeometryEffect(id: "seg", in: ns)
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .scaleEffect(selected ? 1 : 0.98)
+                }
+                .buttonStyle(CarPressStyle())
+            }
+        }
+        .padding(4)
+        .glassEffect(.regular.interactive(), in: Capsule())
+    }
+
+    private func backPill(_ route: CarRoute) -> some View {
+        Button(action: back) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left").font(font.weight(.bold))
+                Text(route.title).font(font).lineLimit(1)
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.leading, 14).padding(.trailing, 20)
+            .frame(height: h)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(CarPressStyle())
+        .glassEffect(.regular.interactive(), in: Capsule())
+    }
 }
 
-/// Now Playing chip: circular artwork with an accent ring, title/state, play/pause, stop.
+/// Now Playing: one glass container — round artwork with an animated accent ring,
+/// title + state, play/pause and stop as inset circles.
 struct CarNowPlayingPill: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.carMetrics) private var m
     let item: PlayableItem
     let open: () -> Void
 
+    private var h: CGFloat { m.compact ? 40 : 48 }
+
     var body: some View {
-        let art = m.headerHeight - 16
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
-                Button(action: open) {
-                    HStack(spacing: m.compact ? 8 : 12) {
-                        ZStack {
-                            Circle().fill(TileTint.gradient(for: item.title))
-                            RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 120, height: 120), contentMode: .fill) {
-                                Monogram(text: item.title, size: art * 0.36)
-                            }
-                            .frame(width: art, height: art).clipShape(Circle())
-                            Circle().strokeBorder(playback.isPlaying ? Theme.accent : Theme.inkFaint, lineWidth: 2)
+        let art = h - 10
+        HStack(spacing: m.compact ? 6 : 10) {
+            Button(action: open) {
+                HStack(spacing: m.compact ? 8 : 12) {
+                    ZStack {
+                        Circle().fill(TileTint.gradient(for: item.title))
+                        RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 120, height: 120), contentMode: .fill) {
+                            Monogram(text: item.title, size: art * 0.36)
                         }
-                        .frame(width: art, height: art)
-                        if !m.compact {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                                Text(playback.isPlaying ? "Now Playing" : "Paused").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: 200, alignment: .leading)
-                        }
+                        .frame(width: art, height: art).clipShape(Circle())
+                        Circle().strokeBorder(playback.isPlaying ? Theme.accent : Theme.inkFaint, lineWidth: 2)
+                            .animation(.easeInOut(duration: 0.25), value: playback.isPlaying)
                     }
-                    .padding(.leading, 2)
-                    .frame(height: m.headerHeight - 12)
+                    .frame(width: art, height: art)
+                    if !m.compact {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                            Text(playback.isPlaying ? "Now Playing" : "Paused")
+                                .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.inkMuted)
+                                .contentTransition(.opacity)
+                        }
+                        .frame(maxWidth: 190, alignment: .leading)
+                    }
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-
-                Button { playback.togglePlayPause() } label: {
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: m.compact ? 15 : 17, weight: .bold))
-                        .frame(width: m.headerHeight - 12, height: m.headerHeight - 12)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-
-                Button { playback.stop() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: m.compact ? 13 : 15, weight: .bold))
-                        .frame(width: m.headerHeight - 12, height: m.headerHeight - 12)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Stop")
+                .padding(.leading, 5)
+                .frame(height: h)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(CarPressStyle())
+
+            glyphButton(playback.isPlaying ? "pause.fill" : "play.fill", size: m.compact ? 14 : 16, tint: Theme.ink) { playback.togglePlayPause() }
+                .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+            glyphButton("xmark", size: m.compact ? 12 : 14, tint: Theme.inkMuted) { playback.stop() }
+                .accessibilityLabel("Stop")
+                .padding(.trailing, 5)
         }
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .accessibilityElement(children: .contain)
+    }
+
+    private func glyphButton(_ symbol: String, size: CGFloat, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: .bold)).foregroundStyle(tint)
+                .frame(width: h - 10, height: h - 10)
+                .background(Theme.ink.opacity(0.08), in: Circle())
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(CarPressStyle())
     }
 }
 

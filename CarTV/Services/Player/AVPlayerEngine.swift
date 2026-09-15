@@ -115,7 +115,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
         player.replaceCurrentItem(with: newItem)
         if let startAt, startAt > 0 {
-            player.seek(to: CMTime(seconds: startAt, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
+            // Exact resume: zero tolerance both ways so we land on the frame we left, not the next keyframe.
+            player.seek(to: CMTime(seconds: startAt, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         }
 
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { @Sendable [weak self] time in

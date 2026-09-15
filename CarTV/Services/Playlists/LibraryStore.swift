@@ -185,9 +185,11 @@ final class LibraryStore {
             guard let v = localVideo(id: ref.id) else { return nil }
             return PlayableItem(video: v)
         case .vod:
-            // Movies resolve from the in-memory catalogue. Episodes need a season
-            // context we don't persist, so they don't round-trip through favorites.
-            return AppEnvironment.shared.vod.movies.first { $0.playableID == ref.id }.map(PlayableItem.init(movie:))
+            // Movies resolve from the in-memory catalogue; episodes from the small
+            // on-disk index VODService keeps of everything that has been played.
+            let vod = AppEnvironment.shared.vod
+            if let m = vod.movies.first(where: { $0.playableID == ref.id }) { return PlayableItem(movie: m) }
+            return vod.playedItem(id: ref.id)
         }
     }
 

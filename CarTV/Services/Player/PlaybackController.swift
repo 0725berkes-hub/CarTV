@@ -31,8 +31,14 @@ final class PlaybackController {
     private(set) var gravity: VideoGravity = .fit
     private(set) var isFallingBack = false
     /// True while the full-screen phone player is presented.
-    var isPhonePlayerPresented = false
-    var phoneIsForeground = true
+    var isPhonePlayerPresented = false {
+        // Leaving the full-screen player is the moment people expect "where I left off"
+        // to be saved — don't wait up to 5 s for the timer.
+        didSet { if !isPhonePlayerPresented, oldValue { persistProgress(force: true) } }
+    }
+    var phoneIsForeground = true {
+        didSet { if !phoneIsForeground, oldValue { persistProgress(force: true) } }
+    }
     var carIsConnected = false {
         didSet {
             if carIsConnected != oldValue {
@@ -137,14 +143,14 @@ final class PlaybackController {
 
     func togglePlayPause() {
         switch snapshot.state {
-        case .playing: engine.pause()
+        case .playing: engine.pause(); persistProgress(force: true)
         case .paused, .ended: engine.play()
         case .failed: retry()
         default: break
         }
     }
 
-    func pause() { engine.pause() }
+    func pause() { engine.pause(); persistProgress(force: true) }
     func resume() { engine.play() }
 
     func stop() {
@@ -289,7 +295,10 @@ final class PlaybackController {
                 attemptedVLC = true
                 isFallingBack = true
                 Log.player.notice("Falling back to VLC for \(item.title, privacy: .public): \(failure.message, privacy: .public)")
-                start(on: .vlc, item: item, startAt: nil)
+                // Keep the resume point: if AVPlayer never rendered, fall back to the
+                // saved position rather than the start of the file.
+                let resumeAt = snapshot.position > 2 ? snapshot.position : progress.resumePosition(for: item.ref)
+                start(on: .vlc, item: item, startAt: item.isLive ? nil : resumeAt)
                 return
             }
             isFallingBack = false
