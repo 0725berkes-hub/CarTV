@@ -50,7 +50,12 @@ nonisolated final class ImageLoader: @unchecked Sendable {
             if url.isFileURL {
                 data = try? Data(contentsOf: url)
             } else {
-                data = try? await session.data(from: url).0
+                var fetched = try? await session.data(from: url).0
+                // Hosts some carriers block (MyTV+ artwork on Korek) → retry via the relay.
+                if fetched == nil, let relay = MyTVService.relayURL(for: url) {
+                    fetched = try? await session.data(from: relay).0
+                }
+                data = fetched
             }
             guard let data, let img = ImageLoader.downsample(data, to: targetSize, scale: scale) else { return nil }
             if let out = img.pngData() ?? img.jpegData(compressionQuality: 0.85) {

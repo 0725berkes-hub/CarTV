@@ -162,6 +162,7 @@ final class PlaybackController {
         current = item
         attemptedVLC = false
         attemptedYouTubeRefresh = false
+        attemptedMyTVRefresh = false
         lastSeekTarget = 0
         isFallingBack = false
         lastSavedPosition = 0
@@ -240,6 +241,7 @@ final class PlaybackController {
     /// Where the user last asked to be — kept so a refused seek resumes there, not at 0.
     private var lastSeekTarget: TimeInterval = 0
     private var attemptedYouTubeRefresh = false
+    private var attemptedMyTVRefresh = false
 
     private func refreshYouTubeStream(item: PlayableItem, resumeAt: TimeInterval) {
         guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
@@ -402,6 +404,24 @@ final class PlaybackController {
                 } else {
                     snapshot.state = .failed(.network(String(localized: "YouTube limited this stream. Tap Retry to resume from here.")))
                     isFallingBack = false
+                }
+                return
+            }
+            // MyTV+: the link set is network-bound. If a channel refuses, re-import the
+            // list for the network we're on now and retry that channel with its new URL.
+            if let item = current, item.ref.kind == .channel, !attemptedMyTVRefresh,
+               let ch = AppEnvironment.shared.library.channel(id: item.ref.id), ch.playlist?.sourceURL == MyTVService.sourceURL {
+                attemptedMyTVRefresh = true
+                isFallingBack = true
+                Log.player.notice("MyTV+ channel refused; refreshing links and retrying \(item.title, privacy: .public)")
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await MyTVService.refreshForCurrentNetwork(env: AppEnvironment.shared, force: true)
+                    guard self.current?.id == item.id, let fresh = AppEnvironment.shared.library.item(for: item.ref) else { return }
+                    self.current = fresh
+                    if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = fresh }
+                    self.attemptedVLC = false
+                    self.start(on: .avPlayer, item: fresh, startAt: nil)
                 }
                 return
             }
