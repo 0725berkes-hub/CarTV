@@ -85,7 +85,7 @@ struct CastView: View {
     private var mirrorCard: some View {
         VStack(alignment: .leading, spacing: Theme.s3) {
             HStack(spacing: Theme.s3) {
-                Image(systemName: mirroring ? "rectangle.on.rectangle.badge.record" : "rectangle.on.rectangle")
+                Image(systemName: mirroring ? "record.circle" : "rectangle.on.rectangle")
                     .font(.system(size: 24, weight: .semibold)).foregroundStyle(mirroring ? Theme.live : Theme.accent).frame(width: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(mirroring ? "Mirroring to the car display" : "Mirror iPhone screen").font(.headline).foregroundStyle(Theme.ink)

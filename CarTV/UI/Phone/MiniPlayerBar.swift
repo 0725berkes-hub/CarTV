@@ -55,6 +55,11 @@ struct MiniPlayerBar: View {
                         .disabled(!playback.hasNext)
                         .accessibilityLabel("Next")
                 }
+                Button { playback.stop() } label: { Image(systemName: "xmark") }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Stop")
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 6)

@@ -96,7 +96,7 @@ enum Genre: String, CaseIterable, Codable, Sendable, Identifiable {
         case .entertainment: Color(hue: 0.95, saturation: 0.65, brightness: 0.90)
         case .religion:      Color(hue: 0.10, saturation: 0.55, brightness: 0.80)
         case .weather:       Color(hue: 0.55, saturation: 0.55, brightness: 0.90)
-        default:             Color(hue: Double(rawValue.hashValue.magnitude % 360) / 360, saturation: 0.55, brightness: 0.80)
+        default:             TileTint.color(for: rawValue)
         }
     }
 }

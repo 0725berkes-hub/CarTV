@@ -3,7 +3,7 @@ import UIKit
 
 /// Design tokens. Dark-first: cars are mostly dark cabins, and the phone app
 /// follows so the two surfaces feel like one product.
-enum Theme {
+nonisolated enum Theme {
     // MARK: Color
     static let accent       = Color(red: 0.196, green: 0.835, blue: 0.514)   // #32D583 dash green
     static let accentDeep   = Color(red: 0.090, green: 0.560, blue: 0.330)
@@ -15,16 +15,16 @@ enum Theme {
     static let ground   = adaptive(light: (0.965, 0.969, 0.976), dark: (0.043, 0.059, 0.078))  // #F6F7F9 / #0B0F14
     static let surface  = adaptive(light: (1.000, 1.000, 1.000), dark: (0.082, 0.106, 0.137))  // #FFFFFF / #151B23
     static let raised   = adaptive(light: (0.925, 0.933, 0.945), dark: (0.118, 0.153, 0.200))  // #ECEEF1 / #1E2733
-    static let hairline = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor.black.withAlphaComponent(0.08) })
+    static let hairline = Color(uiColor: UIColor { @Sendable tc in tc.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor.black.withAlphaComponent(0.08) })
 
     static let ink      = adaptive(light: (0.071, 0.086, 0.106), dark: (0.949, 0.961, 0.973))  // #12161B / #F2F5F8
     static let inkMuted = adaptive(light: (0.400, 0.447, 0.510), dark: (0.545, 0.596, 0.659))  // #667282 / #8B98A8
-    static let inkFaint = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
+    static let inkFaint = Color(uiColor: UIColor { @Sendable tc in tc.userInterfaceStyle == .dark
         ? UIColor(red: 0.545, green: 0.596, blue: 0.659, alpha: 0.55)
         : UIColor(red: 0.400, green: 0.447, blue: 0.510, alpha: 0.55) })
 
-    private static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
-        Color(uiColor: UIColor { tc in
+    nonisolated private static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(uiColor: UIColor { @Sendable tc in
             let c = tc.userInterfaceStyle == .dark ? dark : light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
         })

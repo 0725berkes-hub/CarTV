@@ -158,7 +158,7 @@ struct LiveBadge: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, compact ? 6 : 8).padding(.vertical, compact ? 3 : 4)
-        .glassEffect(.regular, in: Capsule())
+        .background(.black.opacity(0.55), in: Capsule())
     }
 }
 

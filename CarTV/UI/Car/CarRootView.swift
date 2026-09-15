@@ -218,6 +218,10 @@ struct CarTabBar: View {
                             .font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.ink)
                             .frame(width: 36, height: 36).contentShape(Rectangle())
                             .onTapGesture { playback.togglePlayPause() }
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.inkMuted)
+                            .frame(width: 36, height: 36).contentShape(Rectangle())
+                            .onTapGesture { playback.stop() }
                     }
                     .padding(.leading, 8).padding(.trailing, 6)
                     .frame(height: m.headerHeight)
