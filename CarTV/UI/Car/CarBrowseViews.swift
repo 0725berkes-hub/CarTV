@@ -66,7 +66,6 @@ struct CarFavoritesView: View {
 struct CarLibraryView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.carMetrics) private var m
-    @Environment(\.carPush) private var push
     @Query(sort: [SortDescriptor(\Playlist.sortOrder)]) private var playlists: [Playlist]
     @Query(sort: [SortDescriptor(\VideoFolder.sortOrder)]) private var folders: [VideoFolder]
     @Query(filter: #Predicate<LocalVideo> { $0.folder == nil }) private var looseVideos: [LocalVideo]
@@ -75,17 +74,17 @@ struct CarLibraryView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
                 ForEach(playlists) { p in
-                    Button { push(.playlist(p)) } label: {
+                    NavigationLink(value: CarRoute.playlist(p)) {
                         CarSourceCard(symbol: "antenna.radiowaves.left.and.right", title: p.name, subtitle: String(localized: "\(p.channelCount) channels"), tint: TileTint.color(for: p.name))
                     }.buttonStyle(CarFocusButtonStyle())
                 }
                 ForEach(folders) { f in
-                    Button { push(.folder(f)) } label: {
+                    NavigationLink(value: CarRoute.folder(f)) {
                         CarSourceCard(symbol: "folder.fill", title: f.name, subtitle: String(localized: "\(f.videos.count) videos"), tint: Theme.amber)
                     }.buttonStyle(CarFocusButtonStyle())
                 }
                 if !looseVideos.isEmpty {
-                    Button { push(.folder(VideoFolder.loose)) } label: {
+                    NavigationLink(value: CarRoute.folder(VideoFolder.loose)) {
                         CarSourceCard(symbol: "film.stack.fill", title: String(localized: "Videos"), subtitle: String(localized: "\(looseVideos.count) videos"), tint: Theme.accent)
                     }.buttonStyle(CarFocusButtonStyle())
                 }
@@ -104,18 +103,17 @@ extension VideoFolder {
 struct CarPlaylistView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.carMetrics) private var m
-    @Environment(\.carPush) private var push
     let playlist: Playlist
     var body: some View {
         let _ = env.library.revision
         let genres = env.library.genreCounts(in: playlist)
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
-                Button { push(.genre(playlist, nil)) } label: {
+                NavigationLink(value: CarRoute.genre(playlist, nil)) {
                     CarSourceCard(symbol: "square.grid.2x2.fill", title: String(localized: "All"), subtitle: String(localized: "\(playlist.channelCount) channels"), tint: Theme.accent)
                 }.buttonStyle(CarFocusButtonStyle())
                 ForEach(genres, id: \.0) { g, count in
-                    Button { push(.genre(playlist, g)) } label: {
+                    NavigationLink(value: CarRoute.genre(playlist, g)) {
                         CarSourceCard(symbol: g.symbol, title: String(localized: g.title), subtitle: String(localized: "\(count) channels"), tint: g.tint)
                     }.buttonStyle(CarFocusButtonStyle())
                 }
@@ -150,7 +148,6 @@ struct CarVideosGridView: View {
 
 struct CarShelf<Content: View>: View {
     @Environment(\.carMetrics) private var m
-    @Environment(\.carPush) private var push
     let title: LocalizedStringResource
     var seeAll: CarRoute? = nil
     @ViewBuilder let content: () -> Content
@@ -160,7 +157,7 @@ struct CarShelf<Content: View>: View {
                 Text(title).font(Theme.Car.title(m.compact ? 15 : 20)).foregroundStyle(Theme.ink).lineLimit(1)
                 Spacer()
                 if let seeAll {
-                    Button { push(seeAll) } label: {
+                    NavigationLink(value: seeAll) {
                         HStack(spacing: 3) { Text("See all"); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)) }
                             .font(.system(size: m.compact ? 12 : 14, weight: .semibold)).foregroundStyle(Theme.inkMuted)
                             .padding(.horizontal, Theme.s2).padding(.vertical, 6)
@@ -289,7 +286,7 @@ struct CarIndexRail: View {
         }
         .frame(width: m.compact ? 36 : 44)
         .padding(.trailing, Theme.s1)
-        .glassEffect(.regular, in: Capsule())
+        .glassEffect(.regular.interactive(), in: Capsule())
         .padding(.vertical, Theme.s3)
         .padding(.trailing, Theme.s2)
     }

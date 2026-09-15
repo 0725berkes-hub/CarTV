@@ -24,6 +24,11 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.tintColor = UIColor(Theme.accent)
         window.makeKeyAndVisible()
         self.window = window
+        applyAppearance()
+        env.settings.onAppearanceChanged = { [weak self] in
+            self?.applyAppearance()
+            AppEnvironment.shared.carPlay.refreshStyle()
+        }
 
         handle(urlContexts: connectionOptions.urlContexts)
     }
@@ -36,6 +41,14 @@ final class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func handle(urlContexts: Set<UIOpenURLContext>) {
         for ctx in urlContexts {
             AppEnvironment.shared.library.enqueueExternalImport(ctx.url)
+        }
+    }
+
+    private func applyAppearance() {
+        switch AppEnvironment.shared.settings.appearance {
+        case .light: window?.overrideUserInterfaceStyle = .light
+        case .dark: window?.overrideUserInterfaceStyle = .dark
+        case .system: window?.overrideUserInterfaceStyle = .unspecified
         }
     }
 

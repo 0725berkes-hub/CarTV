@@ -343,25 +343,31 @@ struct CarScrubber: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = dragging ? dragFraction * dur : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let track: CGFloat = dragging ? (m.compact ? 16 : 22) : (m.compact ? 8 : 12)
+        let track: CGFloat = dragging ? (m.compact ? 10 : 14) : (m.compact ? 6 : 8)
+        let knob: CGFloat = dragging ? (m.compact ? 30 : 36) : (m.compact ? 22 : 28)
         let font = Font.system(size: m.compact ? 12 : 15, weight: .semibold).monospacedDigit()
 
         HStack(spacing: m.compact ? 10 : 14) {
             Text(pos.clockString).font(font).foregroundStyle(.white).frame(minWidth: m.compact ? 34 : 44, alignment: .trailing)
             GeometryReader { geo in
+                let w = geo.size.width - knob
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.28))
-                    Capsule().fill(.white.opacity(0.18)).frame(width: geo.size.width * playback.snapshot.bufferedFraction)
-                    Capsule().fill(dragging ? .white : Theme.accent).frame(width: max(track, geo.size.width * fraction))
+                    Capsule().fill(.white.opacity(0.28)).frame(height: track).padding(.horizontal, knob / 2)
+                    Capsule().fill(.white.opacity(0.18)).frame(width: w * playback.snapshot.bufferedFraction, height: track).padding(.leading, knob / 2)
+                    Capsule().fill(Theme.accent).frame(width: w * fraction + knob / 2, height: track).padding(.leading, knob / 2)
+                    // Handle: a real, grabbable knob (like the system volume/scrubber thumb).
+                    Circle().fill(.white)
+                        .frame(width: knob, height: knob)
+                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+                        .offset(x: w * fraction)
                 }
-                .frame(height: track)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in
                             if !dragging { dragging = true; onScrubStart() }
-                            dragFraction = min(1, max(0, v.location.x / geo.size.width))
+                            dragFraction = min(1, max(0, (v.location.x - knob / 2) / w))
                         }
                         .onEnded { _ in
                             playback.seek(to: dragFraction * dur)

@@ -58,9 +58,14 @@ final class FavoritesStore {
         return (try? context.fetch(d)) ?? []
     }
 
-    /// Resolved favourites; silently drops references whose target was deleted.
+    private var itemsCache: (rev: Int, libRev: Int, items: [PlayableItem])?
+
+    /// Resolved favourites; cached until favourites or the library change.
     func favoriteItems() -> [PlayableItem] {
         let library = AppEnvironment.shared.library
-        return favorites().compactMap { library.item(for: $0.target) }
+        if let c = itemsCache, c.rev == revision, c.libRev == library.revision { return c.items }
+        let items = favorites().compactMap { library.item(for: $0.target) }
+        itemsCache = (revision, library.revision, items)
+        return items
     }
 }

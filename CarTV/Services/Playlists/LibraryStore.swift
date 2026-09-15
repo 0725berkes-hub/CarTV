@@ -49,16 +49,23 @@ final class LibraryStore {
         return (try? context.fetch(d)) ?? []
     }
 
+    private var genreCache: [UUID: (rev: Int, counts: [(Genre, Int)])] = [:]
+
     /// Genres present in a playlist with counts, in canonical `Genre` order.
+    /// One fetch of the `genreRaw` column, grouped in memory, cached per revision.
     func genreCounts(in playlist: Playlist) -> [(Genre, Int)] {
         let pid = playlist.id
-        var result: [(Genre, Int)] = []
-        for genre in Genre.allCases {
-            let g = genre.rawValue
-            let d = FetchDescriptor<Channel>(predicate: #Predicate { $0.playlistID == pid && $0.genreRaw == g })
-            let count = (try? context.fetchCount(d)) ?? 0
-            if count > 0 { result.append((genre, count)) }
+        if let c = genreCache[pid], c.rev == revision { return c.counts }
+        var d = FetchDescriptor<Channel>(predicate: #Predicate { $0.playlistID == pid })
+        d.propertiesToFetch = [\.genreRaw]
+        let rows = (try? context.fetch(d)) ?? []
+        var tally: [String: Int] = [:]
+        for r in rows { tally[r.genreRaw, default: 0] += 1 }
+        let result = Genre.allCases.compactMap { g -> (Genre, Int)? in
+            guard let n = tally[g.rawValue], n > 0 else { return nil }
+            return (g, n)
         }
+        genreCache[pid] = (revision, result)
         return result
     }
 

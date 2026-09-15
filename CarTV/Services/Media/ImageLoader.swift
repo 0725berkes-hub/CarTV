@@ -63,7 +63,7 @@ nonisolated final class ImageLoader: @unchecked Sendable {
     }
 
     func prefetch(_ urls: [URL], targetSize: CGSize) {
-        for url in urls.prefix(40) where memory.object(forKey: key(url, targetSize)) == nil {
+        for url in urls.prefix(24) where memory.object(forKey: key(url, targetSize)) == nil {
             Task.detached(priority: .utility) { [self] in _ = await image(for: url, targetSize: targetSize) }
         }
     }

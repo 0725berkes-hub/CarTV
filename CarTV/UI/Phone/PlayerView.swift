@@ -211,7 +211,7 @@ struct PlayerView: View {
         let dur = max(playback.snapshot.duration, 1)
         let pos = scrubbing ? scrubValue : playback.snapshot.position
         let fraction = min(1, max(0, pos / dur))
-        let knob: CGFloat = scrubbing ? 24 : 16
+        let knob: CGFloat = scrubbing ? 28 : 20
         let track: CGFloat = scrubbing ? 10 : 6
         let font = Theme.Font.caption.monospacedDigit()
         return HStack(spacing: 12) {

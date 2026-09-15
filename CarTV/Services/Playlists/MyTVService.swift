@@ -96,7 +96,7 @@ enum MyTVService {
 
     /// A rotation digit is spliced into the middle of the base64; it says how far to
     /// rotate the AES key. Strip it, rotate, AES-128-CBC decrypt.
-    nonisolated private static func decrypt(_ enc: String) throws -> Data {
+    nonisolated static func decrypt(_ enc: String) throws -> Data {
         let chars = Array(enc)
         let mid = chars.count / 2
         let rot = Int(String(chars[mid])) ?? 0

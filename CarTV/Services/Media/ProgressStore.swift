@@ -13,11 +13,20 @@ final class ProgressStore {
         self.container = container
     }
 
+    private var map: [UUID: WatchProgress] = [:]
+    private var mapRevision = -1
+
+    private func ensureMap() {
+        guard mapRevision != revision else { return }
+        let all = (try? context.fetch(FetchDescriptor<WatchProgress>())) ?? []
+        map = Dictionary(all.map { ($0.targetID, $0) }, uniquingKeysWith: { a, _ in a })
+        mapRevision = revision
+    }
+
+    /// O(1) after the first call per revision — grids ask for this per tile.
     func progress(for ref: PlayableRef) -> WatchProgress? {
-        let id = ref.id
-        var d = FetchDescriptor<WatchProgress>(predicate: #Predicate { $0.targetID == id })
-        d.fetchLimit = 1
-        return try? context.fetch(d).first
+        ensureMap()
+        return map[ref.id]
     }
 
     /// Resume position if the user stopped somewhere meaningful (>5s in, <95% through).

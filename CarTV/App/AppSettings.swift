@@ -26,8 +26,12 @@ final class AppSettings {
     }
 
     var appearance: Appearance {
-        didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
+        didSet {
+            defaults.set(appearance.rawValue, forKey: Keys.appearance)
+            onAppearanceChanged?()
+        }
     }
+    var onAppearanceChanged: (() -> Void)?
     /// Force VLC software decoding (helps with broken hardware-decoded streams).
     var softwareDecoding: Bool {
         didSet { defaults.set(softwareDecoding, forKey: Keys.softwareDecoding) }
@@ -57,7 +61,7 @@ final class AppSettings {
     }
 
     init() {
-        appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .dark
+        appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
         softwareDecoding = defaults.bool(forKey: Keys.softwareDecoding)
         livePreviews = defaults.object(forKey: Keys.livePreviews) as? Bool ?? true
         healthChecks = defaults.object(forKey: Keys.healthChecks) as? Bool ?? true

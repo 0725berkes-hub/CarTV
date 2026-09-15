@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Design tokens. Dark-first: cars are mostly dark cabins, and the phone app
 /// follows so the two surfaces feel like one product.
@@ -9,14 +10,25 @@ enum Theme {
     static let live         = Color(red: 1.000, green: 0.353, blue: 0.373)   // #FF5A5F
     static let amber        = Color(red: 1.000, green: 0.710, blue: 0.278)   // #FFB547
 
-    static let ground       = Color(red: 0.043, green: 0.059, blue: 0.078)   // #0B0F14
-    static let surface      = Color(red: 0.082, green: 0.106, blue: 0.137)   // #151B23
-    static let raised       = Color(red: 0.118, green: 0.153, blue: 0.200)   // #1E2733
-    static let hairline     = Color.white.opacity(0.08)
+    // Adaptive neutrals: resolve per trait collection so Light/Dark (and the car's
+    // day/night contentStyle) flip every surface, not just the system chrome.
+    static let ground   = adaptive(light: (0.965, 0.969, 0.976), dark: (0.043, 0.059, 0.078))  // #F6F7F9 / #0B0F14
+    static let surface  = adaptive(light: (1.000, 1.000, 1.000), dark: (0.082, 0.106, 0.137))  // #FFFFFF / #151B23
+    static let raised   = adaptive(light: (0.925, 0.933, 0.945), dark: (0.118, 0.153, 0.200))  // #ECEEF1 / #1E2733
+    static let hairline = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor.black.withAlphaComponent(0.08) })
 
-    static let ink          = Color(red: 0.949, green: 0.961, blue: 0.973)   // #F2F5F8
-    static let inkMuted     = Color(red: 0.545, green: 0.596, blue: 0.659)   // #8B98A8
-    static let inkFaint     = Color(red: 0.545, green: 0.596, blue: 0.659).opacity(0.55)
+    static let ink      = adaptive(light: (0.071, 0.086, 0.106), dark: (0.949, 0.961, 0.973))  // #12161B / #F2F5F8
+    static let inkMuted = adaptive(light: (0.400, 0.447, 0.510), dark: (0.545, 0.596, 0.659))  // #667282 / #8B98A8
+    static let inkFaint = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.545, green: 0.596, blue: 0.659, alpha: 0.55)
+        : UIColor(red: 0.400, green: 0.447, blue: 0.510, alpha: 0.55) })
+
+    private static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(uiColor: UIColor { tc in
+            let c = tc.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+    }
 
     // MARK: Radii
     static let radiusS: CGFloat = 10

@@ -20,7 +20,18 @@ final class CarPlayCoordinator: NSObject {
     private(set) var surface: Surface = .none
     private(set) var supportsVideoPlayback = true
     var contentStyle: UIUserInterfaceStyle = .dark {
-        didSet { hostingController?.overrideUserInterfaceStyle = contentStyle == .light ? .light : .dark }
+        didSet { applyStyle() }
+    }
+
+    /// Effective style: the user's in-app Appearance choice wins; otherwise the car's day/night.
+    private func applyStyle() {
+        let pref = AppEnvironment.shared.settings.appearance
+        let style: UIUserInterfaceStyle = switch pref {
+        case .light: .light
+        case .dark: .dark
+        case .system: contentStyle == .light ? .light : .dark
+        }
+        hostingController?.overrideUserInterfaceStyle = style
     }
     /// Size of the car display in points (for layout decisions in SwiftUI).
     private(set) var carScreenSize: CGSize = .zero
@@ -125,12 +136,15 @@ final class CarPlayCoordinator: NSObject {
                 .modelContainer(env.modelContainer)
         )
         let host = UIHostingController(rootView: root)
-        host.overrideUserInterfaceStyle = contentStyle == .light ? .light : .dark
-        host.view.backgroundColor = .black
+        host.view.backgroundColor = UIColor(Theme.ground)
         window.rootViewController = host
         window.tintColor = UIColor(Theme.accent)
         hostingController = host
+        applyStyle()
     }
+
+    /// Called by Settings when the user changes Appearance.
+    func refreshStyle() { applyStyle() }
 
     private func tearDownHosting() {
         hostingController = nil
