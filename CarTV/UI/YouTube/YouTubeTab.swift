@@ -115,11 +115,11 @@ struct YTFeedView: View {
                                     .padding(.horizontal, Theme.s4)
                                 }
                             } else {
-                                YTItemGrid(items: shelf.items, queueSource: page.flatItems)
+                                YTItemGrid(items: shelf.items)
                             }
                         }
                         if page.continuation != nil {
-                            ProgressView().frame(maxWidth: .infinity).padding().task { await loadMore() }
+                            ProgressView().frame(maxWidth: .infinity, minHeight: 64).task { await loadMore() }
                         }
                     }
                     .padding(.vertical, Theme.s2).padding(.bottom, Theme.s10)
@@ -170,8 +170,22 @@ struct YTFeedView: View {
         guard !loadingMore, let cont = page?.continuation else { return }
         loadingMore = true
         if let more = try? await env.youtube.fetch(feed, continuation: cont) {
-            page?.shelves.append(contentsOf: more.shelves)
-            page?.continuation = more.continuation
+            // Grow the existing grid instead of appending new shelves: appending a
+            // sibling grid re-lays out the whole stack and throws the scroll position.
+            let seen = Set(page?.flatItems.map(\.id) ?? [])
+            var loose: [YTItem] = []
+            var titled: [YTShelf] = []
+            for sh in more.shelves {
+                let fresh = sh.items.filter { !seen.contains($0.id) }
+                guard !fresh.isEmpty else { continue }
+                if sh.title == nil { loose.append(contentsOf: fresh) } else { var t = sh; t.items = fresh; titled.append(t) }
+            }
+            if !loose.isEmpty {
+                if let i = page?.shelves.lastIndex(where: { $0.title == nil }) { page?.shelves[i].items.append(contentsOf: loose) }
+                else { page?.shelves.append(YTShelf(title: nil, items: loose)) }
+            }
+            page?.shelves.append(contentsOf: titled)
+            page?.continuation = (loose.isEmpty && titled.isEmpty) ? nil : more.continuation
         } else { page?.continuation = nil }
         loadingMore = false
     }
@@ -181,12 +195,14 @@ struct YTFeedView: View {
 
 struct YTItemGrid: View {
     let items: [YTItem]
-    var queueSource: [YTItem] = []
     var body: some View {
+        // Queue = this grid's videos. Computed once per grid, not per card, so an
+        // appended page doesn't rebuild every card above it.
+        let videos = items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: Theme.s4)], alignment: .leading, spacing: Theme.s5) {
             ForEach(items) { item in
                 switch item {
-                case .video(let v): YTVideoCard(video: v, queue: queueSource.compactMap { if case .video(let x) = $0 { return x } else { return nil } })
+                case .video(let v): YTVideoCard(video: v, queue: videos)
                 case .channel(let c): YTChannelRow(channel: c)
                 case .playlist(let p): YTPlaylistCard(playlist: p)
                 }
