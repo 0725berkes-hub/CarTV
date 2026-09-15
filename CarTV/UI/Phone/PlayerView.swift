@@ -395,10 +395,12 @@ struct SubtitleTranslationHost: ViewModifier {
 // MARK: - Tracks sheet
 
 struct TracksSheet: View {
+    @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
     @State private var showFile = false
+    @State private var confirmDelete = false
 
     var body: some View {
         NavigationStack {
@@ -457,7 +459,31 @@ struct TracksSheet: View {
                         Label(String(localized: "Switch to \(playback.engineKind == .avPlayer ? "VLC" : "AVPlayer")"), systemImage: "cpu")
                     }
                 }
+                // Local videos: manage the file right from the player.
+                if let item = playback.current, item.ref.kind == .localVideo, let video = env.library.localVideo(id: item.id) {
+                    Section("This Video") {
+                        Button {
+                            env.favorites.toggle(item.ref)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            let fav = env.favorites.isFavorite(item)
+                            Label(fav ? "Remove Favorite" : "Add to Favorites", systemImage: fav ? "heart.slash" : "heart")
+                        }
+                        LabeledContent("Size", value: video.fileSize.byteCountString)
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Label("Delete Video", systemImage: "trash")
+                        }
+                    }
+                }
             }
+            .confirmationDialog("Delete this video?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    guard let item = playback.current, let video = env.library.localVideo(id: item.id) else { return }
+                    playback.removeCurrentFromQueue()   // advances or closes, and forgets the item
+                    env.library.delete(video)
+                    dismiss()
+                }
+            } message: { Text("The file is removed from this iPhone. This can't be undone.") }
             .navigationTitle("Audio & Subtitles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

@@ -407,6 +407,16 @@ final class PlaybackController {
         return (repeatMode == .all || !auto) && !queue.isEmpty ? queue.first : nil
     }
 
+    /// The current item was deleted from the library: advance past it (or stop) and
+    /// drop it from the queue so previous/shuffle never land on it again.
+    func removeCurrentFromQueue() {
+        guard let cur = current else { return }
+        let nextItem = upcoming(auto: false)
+        queue.removeAll { $0.id == cur.id }
+        shuffleTrail.removeAll { $0 == cur.id }
+        if let nextItem { play(nextItem, origin: origin, resume: false) } else { stop() }
+    }
+
     func next() {
         guard let cur = current, let item = upcoming(auto: false) else { return }
         if shuffle { shuffleTrail.append(cur.id) }
