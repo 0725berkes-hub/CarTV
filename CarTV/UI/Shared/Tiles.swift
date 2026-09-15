@@ -102,6 +102,7 @@ struct VideoCard: View {
     let item: PlayableItem
     var progress: Double? = nil
     var isFavorite = false
+    var isPlaying = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack {
@@ -118,11 +119,14 @@ struct VideoCard: View {
                         if item.duration > 0 { Text(item.duration.clockString).font(.system(size: 10, weight: .bold)).monospacedDigit().foregroundStyle(.white).shadow(radius: 2) }
                     }
                 }.padding(7)
+                if isPlaying { Rectangle().fill(.black.opacity(0.4)); EqualizerBars() }
                 if let progress, progress > 0.02 { VStack { Spacer(); ProgressBar(fraction: progress) } }
             }
             .aspectRatio(16/9, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
+            .overlay { if isPlaying { RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous).strokeBorder(Theme.accent, lineWidth: 2) } }
             Text(item.title).font(Theme.Font.tile).foregroundStyle(Theme.ink).lineLimit(1)
+            if let sub = item.subtitle { Text(sub).font(Theme.Font.label).foregroundStyle(Theme.inkMuted).lineLimit(1) }
         }
         .contentShape(Rectangle())
     }

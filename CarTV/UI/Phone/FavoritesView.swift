@@ -35,21 +35,22 @@ struct ItemGrid: View {
     var healthLookup: (PlayableItem) -> SourceHealth = { _ in .unknown }
 
     var body: some View {
-        let channels = items.filter { $0.ref.kind == .channel }
-        let portrait = items.filter { $0.ref.kind != .channel }
+        // Two shapes only: landscape cards (channels, YouTube, videos, episodes) and
+        // movie posters. Each gets its own grid so rows are one height.
+        let landscape = items.filter { !ItemCell.isPoster($0) }
+        let posters = items.filter { ItemCell.isPoster($0) }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.s5) {
-                if !channels.isEmpty {
-                    if !portrait.isEmpty { Text("Channels").eyebrow().padding(.horizontal, Theme.s4) }
+                if !landscape.isEmpty {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 156), spacing: Theme.s2)], spacing: Theme.s3) {
-                        ForEach(channels) { item in cell(item, queue: channels) }
+                        ForEach(landscape) { item in cell(item, queue: landscape) }
                     }
                     .padding(.horizontal, Theme.s4)
                 }
-                if !portrait.isEmpty {
-                    if !channels.isEmpty { Text("Movies & Videos").eyebrow().padding(.horizontal, Theme.s4) }
+                if !posters.isEmpty {
+                    if !landscape.isEmpty { Text("Movies").eyebrow().padding(.horizontal, Theme.s4) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: Theme.s3)], alignment: .leading, spacing: Theme.s4) {
-                        ForEach(portrait) { item in cell(item, queue: portrait) }
+                        ForEach(posters) { item in cell(item, queue: posters) }
                     }
                     .padding(.horizontal, Theme.s4)
                 }
@@ -69,26 +70,32 @@ struct ItemGrid: View {
 }
 
 /// The one cell to use anywhere a mixed list of PlayableItems is shown.
-/// Picks the right shape per item so callers stop special-casing `isLocal`.
+///
+/// Shape rule: **everything is a 16:9 landscape card** except catalogue movies,
+/// which are 2:3 posters. Channels, YouTube, local videos and episodes all share
+/// the landscape card so a shelf or grid row is always one height. Local videos
+/// used to be 3:4 thumbs — that's what made Favorites look like a ransom note.
 struct ItemCell: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
     let item: PlayableItem
     var health: SourceHealth = .unknown
 
+    /// Whether this item renders as a poster (true) or a landscape card (false).
+    static func isPoster(_ item: PlayableItem) -> Bool {
+        item.ref.kind == .vod && item.subtitle?.hasPrefix("Season") != true
+    }
+
     var body: some View {
         let progress = env.progress.progress(for: item.ref)?.fraction
         let fav = env.favorites.isFavorite(item)
         let playing = playback.current?.id == item.id
-        switch item.ref.kind {
-        case .channel:
-            ChannelTile(item: item, health: health, isFavorite: fav, isPlaying: playing)
-        case .vod:
+        if Self.isPoster(item) {
             PosterTile(item: item, progress: progress, isFavorite: fav, isPlaying: playing)
-        case .localVideo:
-            VideoThumbCell(item: item, progress: progress, isFavorite: fav, isPlaying: playing)
-        case .youtube:
-            VideoCard(item: item, progress: progress, isFavorite: fav)
+        } else if item.ref.kind == .channel {
+            ChannelTile(item: item, health: health, isFavorite: fav, isPlaying: playing)
+        } else {
+            VideoCard(item: item, progress: progress, isFavorite: fav, isPlaying: playing)
         }
     }
 }
