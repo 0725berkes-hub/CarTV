@@ -115,7 +115,20 @@ struct YTFeedView: View {
                                     .padding(.horizontal, Theme.s4)
                                 }
                             } else {
-                                YTItemGrid(items: shelf.items)
+                                // Rows live directly in the outer lazy stack. A LazyVGrid nested
+                                // inside a LazyVStack only *estimates* its height until rows are
+                                // realised, and every appended page re-estimates → scroll jumps.
+                                let videos = shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }
+                                ForEach(shelf.items) { item in
+                                    Group {
+                                        switch item {
+                                        case .video(let v): YTVideoCard(video: v, queue: videos)
+                                        case .channel(let c): YTChannelRow(channel: c)
+                                        case .playlist(let p): YTPlaylistCard(playlist: p)
+                                        }
+                                    }
+                                    .padding(.horizontal, Theme.s4)
+                                }
                             }
                         }
                         if page.continuation != nil {
@@ -241,7 +254,10 @@ struct YTVideoCard: View {
             HStack(alignment: .top, spacing: Theme.s3) {
                 avatar(36)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(video.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink).lineLimit(2)
+                    // Reserve two lines always so every row has the same height; lazy
+                    // stacks estimate off-screen rows from realised ones, and variable
+                    // heights make the estimate drift → position jumps while loading.
+                    Text(video.title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink).lineLimit(2, reservesSpace: true)
                     Text(meta).font(.footnote).foregroundStyle(Theme.inkMuted).lineLimit(1)
                 }
                 Spacer(minLength: 0)
