@@ -156,7 +156,7 @@ struct CarVideosGridView: View {
     var body: some View {
         let _ = env.library.revision
         let videos = folder.id == VideoFolder.loose.id ? env.library.localVideos().filter { $0.folder == nil } : env.library.localVideos(in: folder)
-        CarGrid(items: videos.map(PlayableItem.init(video:)), wide: true, shuffleable: true)
+        CarGrid(items: videos.map(PlayableItem.init(video:)), shuffleable: true)
     }
 }
 
@@ -253,20 +253,19 @@ struct CarGrid: View {
     }
 
     var body: some View {
-        let channels = items.filter { $0.ref.kind == .channel }
-        let portrait = items.filter { $0.ref.kind != .channel }
-        if !channels.isEmpty && !portrait.isEmpty {
+        let landscape = items.filter { !ItemCell.isPoster($0) }
+        let posters = items.filter { ItemCell.isPoster($0) }
+        if !landscape.isEmpty && !posters.isEmpty {
             // Mixed list (Favorites): never put a 16:9 tile next to a 2:3 poster.
             ScrollView {
                 VStack(alignment: .leading, spacing: m.compact ? Theme.s4 : Theme.s6) {
-                    Text("Channels").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.horizontal, m.gutter)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: m.tileWidth * 1.15), spacing: Theme.s3)], spacing: Theme.s3) {
-                        ForEach(channels) { item in CarTileButton(item: item, queue: channels, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
+                        ForEach(landscape) { item in CarTileButton(item: item, queue: landscape, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
                     }
                     .padding(.horizontal, m.gutter)
-                    Text("Movies & Videos").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.horizontal, m.gutter)
+                    Text("Movies").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.horizontal, m.gutter)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: m.tileWidth * 0.8), spacing: Theme.s3)], spacing: Theme.s3) {
-                        ForEach(portrait) { item in CarTileButton(item: item, queue: portrait, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
+                        ForEach(posters) { item in CarTileButton(item: item, queue: posters, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
                     }
                     .padding(.horizontal, m.gutter)
                 }
@@ -383,20 +382,17 @@ struct CarTileButton: View {
             playback.play(item, queue: queue, origin: .car)
         } label: {
             Group {
-                switch item.ref.kind {
-                case .channel:
-                    ChannelTile(item: item, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id, progress: progress, compact: m.compact)
-                case .vod:
+                if ItemCell.isPoster(item) {
                     PosterTile(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
-                case .localVideo:
-                    VideoThumbCell(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
-                case .youtube:
+                } else if item.ref.kind == .channel {
                     ChannelTile(item: item, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id, progress: progress, compact: m.compact)
+                } else {
+                    VideoCard(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
                 }
             }
-            // Portrait shapes (posters, video thumbs) share one narrower width so
-            // they line up; channels get the wide 16:9 width.
-            .if(fixedWidth) { $0.frame(width: item.ref.kind == .channel ? m.tileWidth : m.tileWidth * 0.68) }
+            // Same two-shape rule as the phone: movie posters are narrow, everything
+            // else (channels, YouTube, videos, episodes) is a 16:9 card at tile width.
+            .if(fixedWidth) { $0.frame(width: ItemCell.isPoster(item) ? m.tileWidth * 0.62 : m.tileWidth) }
             .padding(6)
             .contentShape(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         }
