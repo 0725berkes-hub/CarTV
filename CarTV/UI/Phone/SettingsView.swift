@@ -66,6 +66,24 @@ struct SettingsView: View {
                     Text("Software decoding forces VLC for every stream. Turn it on if hardware-decoded video shows artifacts.")
                 }
 
+                Section {
+                    Picker(selection: Binding(get: { settings.downloadFolderID }, set: { settings.downloadFolderID = $0 })) {
+                        Text("Ask every time").tag(UUID?.none)
+                        ForEach(env.library.folders()) { f in Text(f.name).tag(Optional(f.id)) }
+                    } label: { Label("Download folder", systemImage: "folder") }
+                    Picker(selection: Binding(get: { env.downloads.maxHeight ?? 0 }, set: { env.downloads.maxHeight = $0 == 0 ? nil : $0 })) {
+                        Text("Best available").tag(0); Text("1080p").tag(1080); Text("720p").tag(720); Text("480p").tag(480); Text("360p").tag(360)
+                    } label: { Label("Download quality", systemImage: "arrow.down.circle") }
+                    SecureField("RapidAPI key (optional fallback)", text: Binding(get: { settings.rapidAPIKey ?? "" }, set: { settings.rapidAPIKey = $0 }))
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if !env.downloads.jobs.isEmpty {
+                        YTDownloadsList()
+                        Button("Clear finished") { env.downloads.clearFinished() }.disabled(env.downloads.active.count == env.downloads.jobs.count)
+                    }
+                } header: { Text("YouTube downloads") } footer: {
+                    Text("Downloads are saved into your local videos and play offline, in the car too. The RapidAPI key is only used when YouTube refuses a stream.")
+                }
+
                 Section("Storage") {
                     LabeledContent("Local videos", value: localVideoSize)
                     Button { ImageLoader.shared.clearDisk(); cacheCleared = true } label: {

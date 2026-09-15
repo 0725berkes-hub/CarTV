@@ -139,6 +139,7 @@ struct YTWatchView: View {
                 pill(env.favorites.isFavorite(PlayableRef(id: YouTubeService.uuid(for: video.id), kind: .youtube)) ? "heart.fill" : "heart", "Favorite", active: false) {
                     env.favorites.toggle(PlayableRef(id: YouTubeService.uuid(for: video.id), kind: .youtube))
                 }
+                YTDownloadButton(video: video)
                 ShareLink(item: video.watchURL) { Label("Share", systemImage: "square.and.arrow.up").font(.subheadline.weight(.semibold)).padding(.horizontal, 4).frame(height: 36) }
                     .buttonStyle(.glass).buttonBorderShape(.capsule)
             }

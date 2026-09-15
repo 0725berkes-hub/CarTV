@@ -188,6 +188,7 @@ struct YTVideoCard: View {
                 NavigationLink(value: YTChannel(id: cid, name: video.channelName ?? "")) { Label("Go to channel", systemImage: "person.crop.circle") }
             }
             Button { Task { try? await env.youtube.watchLater(video.id) } } label: { Label("Save to Watch Later", systemImage: "clock") }
+            YTDownloadButton(video: video, style: .menuItem)
             Button { UIPasteboard.general.url = video.watchURL } label: { Label("Copy Link", systemImage: "link") }
         }
     }

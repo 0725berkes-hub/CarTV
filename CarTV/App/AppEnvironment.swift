@@ -24,6 +24,7 @@ final class AppEnvironment {
     #endif
     let mirror: MirrorReceiver
     let youtube: YouTubeService
+    let downloads = YTDownloadManager()
     let vod: VODService
 
     private(set) var didBootstrap = false
