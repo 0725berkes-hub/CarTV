@@ -34,6 +34,9 @@ struct PhoneRootView: View {
         .tabViewBottomAccessory(isEnabled: playback.isActive) {
             MiniPlayerBar()
         }
+        // iOS 26 shrinks the tab bar into a compact glass pill when a list scrolls
+        // under it — reads as a stuck half-sheet on a TV app. Keep it full-size.
+        .tabBarMinimizeBehavior(.never)
         .tint(Theme.accent)
         .preferredColorScheme(settings.appearance.colorScheme)
         .fullScreenCover(isPresented: $playerShown) {
