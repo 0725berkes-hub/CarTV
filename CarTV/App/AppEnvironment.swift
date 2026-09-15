@@ -1,5 +1,6 @@
 import OSLog
 import Foundation
+import AppIntents
 import SwiftData
 import AVFoundation
 import UIKit

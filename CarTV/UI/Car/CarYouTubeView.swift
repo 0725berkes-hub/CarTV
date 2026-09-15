@@ -10,19 +10,22 @@ struct CarYouTubeView: View {
     @State private var page: YTPage?
     @State private var error: String?
 
-    private let feeds: [(YouTubeService.Feed, LocalizedStringResource, String)] = [
-        (.home, "Home", "house.fill"), (.subscriptions, "Subscriptions", "rectangle.stack.badge.person.crop"),
-        (.watchLater, "Watch Later", "clock.fill"), (.history, "History", "clock.arrow.circlepath")
+    private struct FeedChip: Identifiable { let id: String; let feed: YouTubeService.Feed; let title: LocalizedStringResource; let symbol: String }
+    private let feeds: [FeedChip] = [
+        FeedChip(id: "home", feed: .home, title: "Home", symbol: "house.fill"),
+        FeedChip(id: "subs", feed: .subscriptions, title: "Subscriptions", symbol: "rectangle.stack.badge.person.crop"),
+        FeedChip(id: "wl", feed: .watchLater, title: "Watch Later", symbol: "clock.fill"),
+        FeedChip(id: "history", feed: .history, title: "History", symbol: "clock.arrow.circlepath"),
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.s2) {
-                    ForEach(feeds, id: \.1) { f, title, symbol in
-                        let selected = "\(feed)" == "\(f)"
-                        Button { feed = f } label: {
-                            Label(title, systemImage: symbol).font(.system(size: m.compact ? 13 : 15, weight: .semibold))
+                    ForEach(feeds) { chip in
+                        let selected = feed == chip.feed
+                        Button { feed = chip.feed } label: {
+                            Label(chip.title, systemImage: chip.symbol).font(.system(size: m.compact ? 13 : 15, weight: .semibold))
                                 .foregroundStyle(selected ? Color.black : Theme.ink)
                                 .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4).frame(height: m.compact ? 36 : 42)
                         }
