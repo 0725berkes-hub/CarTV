@@ -148,7 +148,35 @@ final class VODService {
         var fetchedAt: Date
     }
 
+    /// Catalogue via the edge first (2.9 MB gzipped, ~3 s), falling back to the raw
+    /// upstream (23 MB uncompressed, 30–90 s) if the edge is unreachable.
     nonisolated private static func fetchCatalogue() async throws -> Catalogue {
+        do {
+            return try await fetchFromEdge()
+        } catch {
+            Log.playlist.notice("VOD: edge failed (\(error.localizedDescription, privacy: .public)); trying upstream")
+            return try await fetchFromUpstream()
+        }
+    }
+
+    /// The Cloudflare Worker's payload is already shaped like our models, so this
+    /// is a straight Codable decode — no dictionary walking.
+    nonisolated private static func fetchFromEdge() async throws -> Catalogue {
+        var req = URLRequest(url: MyTVAPI.edgeCatalogue, timeoutInterval: 30)
+        req.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
+        let t0 = Date()
+        let (data, resp) = try await MyTVAPI.session.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        Log.playlist.info("VOD: edge catalogue \(data.count / 1024) KB in \(Int(Date().timeIntervalSince(t0)))s")
+        struct Edge: Decodable { let movies: [VODMovie]; let series: [VODSeries] }
+        let e = try JSONDecoder().decode(Edge.self, from: data)
+        guard e.movies.count > 100 else { throw URLError(.cannotParseResponse) }
+        return Catalogue(movies: e.movies, series: e.series, fetchedAt: .now)
+    }
+
+    nonisolated private static func fetchFromUpstream() async throws -> Catalogue {
         async let m: [[String: Any]] = MyTVAPI.post(.movies)
         async let s: [[String: Any]] = MyTVAPI.post(.series)
         let (rawMovies, rawSeries) = try await (m, s)
@@ -222,6 +250,8 @@ nonisolated enum MyTVAPI {
     }
 
     nonisolated static let userAgent = "And$MyTV"
+    /// Cloudflare Worker that slims and gzips the catalogue (see coding/mytv-worker).
+    nonisolated static let edgeCatalogue = URL(string: "https://mytv.hankus1.workers.dev/vod/catalogue")!
     nonisolated private static let base: [String: String] = [
         "appVersion": "3.15.1", "deviceType": "android",
         "uuid": "58182e46-8a20-443e-9e43-9b63bc44589c", "userId": "6414575", "country": "IQ",
@@ -230,7 +260,7 @@ nonisolated enum MyTVAPI {
     /// One session for catalogue pulls: generous resource timeout for the 22 MB movie
     /// list, gzip accepted, no cookies, and it fails fast when there's no network
     /// instead of waiting for connectivity forever.
-    nonisolated private static let session: URLSession = {
+    nonisolated static let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 30
         c.timeoutIntervalForResource = 180
