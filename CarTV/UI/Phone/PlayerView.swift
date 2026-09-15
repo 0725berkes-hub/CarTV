@@ -71,7 +71,10 @@ struct PlayerView: View {
             .statusBarHidden(!controlsVisible)
             .persistentSystemOverlays(controlsVisible ? .automatic : .hidden)
             .onAppear { scheduleHide() }
-            .onChange(of: playback.isPlaying, initial: true) { _, playing in if playing { scheduleHide() } else { show() } }
+            .onChange(of: playback.isPlaying, initial: true) { _, playing in
+                if playing { scheduleHide() }
+                else if playback.snapshot.state == .paused { show() }   // not on loading between items
+            }
             .sheet(isPresented: $showTracks) { TracksSheet().presentationDetents([.medium, .large]) }
             .sheet(isPresented: $showChannels) { ChannelDrawer().presentationDetents([.medium, .large]) }
             .fileImporter(isPresented: $showSubtitleFile, allowedContentTypes: [.plainText, .data], allowsMultipleSelection: false) { result in

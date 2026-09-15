@@ -96,7 +96,10 @@ struct CarPlayerView: View {
         }
         .onAppear { scheduleHide() }
         .onChange(of: playback.isPlaying, initial: true) { _, playing in
-            if playing { scheduleHide() } else { withAnimation { controlsVisible = true } }
+            // Reveal only for a *user* pause. isPlaying flips false during the load
+            // between feed items too, and that must not pop the controls.
+            if playing { scheduleHide() }
+            else if playback.snapshot.state == .paused { withAnimation { controlsVisible = true } }
         }
         .onChange(of: playback.current?.id) { _, _ in
             // Feeds auto-advance constantly; popping controls on each would be noise.
