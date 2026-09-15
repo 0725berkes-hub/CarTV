@@ -35,6 +35,17 @@ struct CarYouTubeView: View {
                 }
                 .padding(.horizontal, m.gutter).padding(.vertical, Theme.s2)
             }
+            .overlay(alignment: .trailing) {
+                // Refresh: drop caches and re-fetch this feed.
+                Button { env.youtube.invalidateFeeds(); reload &+= 1 } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: m.compact ? 14 : 17, weight: .semibold)).foregroundStyle(Theme.ink)
+                        .frame(width: m.compact ? 36 : 42, height: m.compact ? 36 : 42)
+                }
+                .buttonStyle(CarPressStyle())
+                .glassEffect(.regular.interactive(), in: Circle())
+                .padding(.trailing, m.gutter)
+                .disabled(page == nil && error == nil)
+            }
 
             Group {
                 if let page {
@@ -42,6 +53,10 @@ struct CarYouTubeView: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: m.compact ? 180 : 240), spacing: Theme.s3)], spacing: Theme.s4) {
                             ForEach(videos) { v in CarYTCard(video: v, queue: videos) }
+                            // Pull the next page of every shelf that still has one.
+                            if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil {
+                                ProgressView().frame(maxWidth: .infinity, minHeight: 80).task { await loadMore() }
+                            }
                         }
                         .padding(.horizontal, m.gutter).padding(.top, Theme.s2).padding(.bottom, m.gutter)
                     }
@@ -52,13 +67,39 @@ struct CarYouTubeView: View {
                 }
             }
         }
-        .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)") {
+        .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)-\(reload)") {
             page = nil; error = nil
             do {
                 let p = try await env.youtube.fetch(feed)
                 if p.flatItems.isEmpty { error = String(localized: "Nothing here yet. Sign in on your iPhone for your feed.") } else { page = p }
             } catch { self.error = error.localizedDescription }
         }
+    }
+
+    @State private var reload = 0
+
+    private func loadMore() async {
+        guard var p = page else { return }
+        var grew = false
+        for i in p.shelves.indices {
+            guard let c = p.shelves[i].continuation else { continue }
+            if let more = try? await env.youtube.more(shelf: c) {
+                let seen = Set(p.shelves[i].items.map(\.id))
+                let fresh = more.items.filter { !seen.contains($0.id) }
+                p.shelves[i].items.append(contentsOf: fresh); p.shelves[i].continuation = more.continuation
+                grew = grew || !fresh.isEmpty
+            } else { p.shelves[i].continuation = nil }
+        }
+        if let c = p.continuation {
+            if let more = try? await env.youtube.fetch(feed, continuation: c) {
+                let seen = Set(p.flatItems.map(\.id))
+                let shelves = more.shelves.map { sh in var s = sh; s.items = s.items.filter { !seen.contains($0.id) }; return s }.filter { !$0.items.isEmpty }
+                p.shelves.append(contentsOf: shelves); p.continuation = more.continuation
+                grew = grew || !shelves.isEmpty
+            } else { p.continuation = nil }
+        }
+        if !grew { p.continuation = nil; for i in p.shelves.indices { p.shelves[i].continuation = nil } }
+        page = p
     }
 }
 

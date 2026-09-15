@@ -223,9 +223,11 @@ struct PlayerView: View {
                     }
                     HStack(spacing: Theme.s2) {
                         Spacer()
-                        if playback.current?.ref.kind == .channel {
+                        if playback.queue.count > 1 {
+                            let isTV = playback.current?.ref.kind == .channel
                             Button { showChannels = true; hideTask?.cancel() } label: {
-                                Label("Channels", systemImage: "list.bullet.rectangle").font(Theme.Font.caption.weight(.semibold))
+                                Label(isTV ? "Channels" : "Up next", systemImage: isTV ? "list.bullet.rectangle" : "chevron.up")
+                                    .font(Theme.Font.caption.weight(.semibold))
                                     .padding(.horizontal, Theme.s3).frame(height: 36).foregroundStyle(.white)
                             }
                             .buttonStyle(.plain)
@@ -531,6 +533,7 @@ struct ChannelDrawer: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    private var isTV: Bool { playback.current?.ref.kind == .channel }
 
     var body: some View {
         NavigationStack {
@@ -544,7 +547,10 @@ struct ChannelDrawer: View {
                                 RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 120, height: 68), contentMode: .fit) { Monogram(text: item.title, size: 14) }.padding(6)
                             }
                             .frame(width: 72, height: 42).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            Text(item.title).font(Theme.Font.callout).foregroundStyle(Theme.ink).lineLimit(1)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title).font(Theme.Font.callout).foregroundStyle(Theme.ink).lineLimit(isTV ? 1 : 2)
+                                if !isTV, let sub = item.subtitle?.nilIfEmpty { Text(sub).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted).lineLimit(1) }
+                            }
                             Spacer()
                             if playback.current?.id == item.id { EqualizerBars().scaleEffect(0.7) }
                         }
@@ -557,8 +563,8 @@ struct ChannelDrawer: View {
                 .background(Theme.ground)
                 .onAppear { if let id = playback.current?.id { proxy.scrollTo(id, anchor: .center) } }
             }
-            .searchable(text: $query, prompt: Text("Find a channel"))
-            .navigationTitle("Channels")
+            .searchable(text: $query, prompt: Text(isTV ? "Find a channel" : "Search up next"))
+            .navigationTitle(isTV ? "Channels" : "Up next")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }

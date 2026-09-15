@@ -152,8 +152,8 @@ struct CarPlayerView: View {
                                 CarCircleButton(symbol: "shuffle", size: small, tint: playback.shuffle ? Theme.accent : .white) { playback.toggleShuffle(); bump() }
                                 CarCircleButton(symbol: playback.repeatMode.symbol, size: small, tint: playback.repeatMode == .off ? .white : Theme.accent) { playback.cycleRepeat(); bump() }
                             }
-                            if playback.current?.ref.kind == .channel {
-                                CarCircleButton(symbol: "list.bullet.rectangle.fill", size: small) {
+                            if playback.queue.count > 1 {
+                                CarCircleButton(symbol: playback.current?.ref.kind == .channel ? "list.bullet.rectangle.fill" : "text.line.first.and.arrowtriangle.forward", size: small) {
                                     withAnimation(.spring(duration: 0.3)) { drawerOpen.toggle() }
                                     hideTask?.cancel()
                                 }
@@ -340,7 +340,7 @@ struct CarChannelDrawer: View {
         let thumbW: CGFloat = m.compact ? 60 : 92
         VStack(spacing: 0) {
             HStack {
-                Text("Channels").font(Theme.Car.title(m.compact ? 15 : 20)).foregroundStyle(Theme.ink)
+                Text(playback.current?.ref.kind == .channel ? "Channels" : "Up next").font(Theme.Car.title(m.compact ? 15 : 20)).foregroundStyle(Theme.ink)
                 Spacer()
                 CarCircleButton(symbol: "xmark", size: m.compact ? 32 : 44) { close() }
             }
@@ -359,8 +359,13 @@ struct CarChannelDrawer: View {
                                     }
                                     .frame(width: thumbW, height: thumbW * 9 / 16)
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                    Text(item.title).font(.system(size: m.compact ? 12 : 15, weight: .semibold))
-                                        .foregroundStyle(Theme.ink).lineLimit(2).multilineTextAlignment(.leading)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title).font(.system(size: m.compact ? 12 : 15, weight: .semibold))
+                                            .foregroundStyle(Theme.ink).lineLimit(2).multilineTextAlignment(.leading)
+                                        if item.ref.kind != .channel, let sub = item.subtitle?.nilIfEmpty {
+                                            Text(sub).font(.system(size: m.compact ? 10 : 12)).foregroundStyle(Theme.inkMuted).lineLimit(1)
+                                        }
+                                    }
                                     Spacer(minLength: 0)
                                     if playback.current?.id == item.id { EqualizerBars().scaleEffect(m.compact ? 0.6 : 0.85) }
                                 }

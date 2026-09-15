@@ -38,6 +38,9 @@ nonisolated struct YTPlaylist: Identifiable, Hashable, Sendable {
     var channelName: String?
     var thumbnailURL: URL?
     var videoCountText: String?
+    /// For Mixes (RD… ids): the seed video the mix is built around.
+    var firstVideoID: String?
+    var isMix: Bool { id.hasPrefix("RD") }
 }
 
 nonisolated enum YTItem: Identifiable, Hashable, Sendable {

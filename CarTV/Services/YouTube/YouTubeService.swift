@@ -97,7 +97,19 @@ final class YouTubeService {
             }.filter { !$0.items.isEmpty }
             if continuation == nil { pageCache[key] = (page, Date()) }
             return page
-        case .playlist(let id): json = try await api.browse("VL" + id.replacingOccurrences(of: "VL", with: ""), continuation: continuation, accessToken: token)
+        case .playlist(let id):
+            if id.hasPrefix("RD") {
+                // Mixes have no browse page; their queue comes from `next` for the seed video.
+                let seed = String(id.dropFirst(2)).replacingOccurrences(of: "MM", with: "")
+                json = try await api.next(videoID: seed.isEmpty ? "" : seed, playlistID: id, continuation: continuation, accessToken: token)
+                var page = YTPage(shelves: [], continuation: nil)
+                let vids = YTParser.collectItems(json["contents"].find("playlist")).compactMap { if case .video(let v) = $0 { return v } else { return nil } }
+                let fallback = vids.isEmpty ? YTParser.watch(json).related : vids
+                page.shelves = [YTShelf(title: String(localized: "Mix"), items: fallback.map { .video($0) })]
+                if continuation == nil { pageCache[key] = (page, Date()) }
+                return page
+            }
+            json = try await api.browse("VL" + id.replacingOccurrences(of: "VL", with: ""), continuation: continuation, accessToken: token)
         case .channel(let id, let tab):
             let params: String? = switch tab { case .videos: "EgZ2aWRlb3PyBgQKAjoA"; case .live: "EgdzdHJlYW1z8gYECgJ6AA%3D%3D"; case .playlists: "EglwbGF5bGlzdHPyBgQKAkIA" }
             json = try await api.browse(id, params: params, continuation: continuation, accessToken: token)
@@ -120,6 +132,18 @@ final class YouTubeService {
         let token = await auth.token()
         let json = try await api.browse(id, params: "EgZ2aWRlb3PyBgQKAjoA", accessToken: token)
         return (YTParser.channelHeader(json, id: id), YTParser.page(json))
+    }
+
+    /// Drop cached pages so the next fetch hits the network (Refresh button).
+    func invalidateFeeds() { pageCache.removeAll() }
+
+    /// More items for a single shelf (TV layout paginates per shelf).
+    func more(shelf continuation: String) async throws -> YTShelf? {
+        let json = try await api.browse("", continuation: continuation, accessToken: await auth.token())
+        let items = YTParser.collectItems(json)
+        guard !items.isEmpty else { return nil }
+        let next = json.find("continuations").array.first?["nextContinuationData"]["continuation"].string ?? json.find("continuationCommand")["token"].string
+        return YTShelf(title: nil, items: items, continuation: next)
     }
 
     func watch(_ videoID: String) async throws -> YTParser.WatchInfo {

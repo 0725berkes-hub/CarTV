@@ -7,6 +7,7 @@ struct YouTubeTab: View {
     @State private var section: Section = .home
     @State private var query = ""
     @State private var submitted: String?
+    @State private var feedReload = 0
     @State private var showSignIn = false
     @State private var path = NavigationPath()
 
@@ -28,9 +29,9 @@ struct YouTubeTab: View {
                         .padding(.horizontal, Theme.s4).padding(.bottom, Theme.s2)
                         Group {
                             switch section {
-                            case .home: YTFeedView(feed: .home)
-                            case .subscriptions: YTFeedView(feed: .subscriptions)
-                            case .library: YTLibraryView()
+                            case .home: YTFeedView(feed: .home).id(feedReload)
+                            case .subscriptions: YTFeedView(feed: .subscriptions).id(feedReload)
+                            case .library: YTLibraryView().id(feedReload)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -43,6 +44,10 @@ struct YouTubeTab: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { MoreToolbarMenu() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { env.youtube.invalidateFeeds(); feedReload &+= 1 } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel("Refresh feed")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSignIn = true } label: {
                         if let url = env.youtube.auth.accountAvatarURL {
@@ -97,7 +102,14 @@ struct YTFeedView: View {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     LazyHStack(alignment: .top, spacing: Theme.s3) {
                                         ForEach(shelf.items) { item in
-                                            if case .video(let v) = item { YTVideoCard(video: v, queue: shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }).frame(width: 260) }
+                                            switch item {
+                                            case .video(let v): YTVideoCard(video: v, queue: shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }).frame(width: 260)
+                                            case .playlist(let pl): YTPlaylistCard(playlist: pl).frame(width: 260)
+                                            case .channel(let c): YTChannelRow(channel: c).frame(width: 260)
+                                            }
+                                        }
+                                        if shelf.continuation != nil {
+                                            ProgressView().frame(width: 60, height: 146).task { await loadMore(shelf: shelf) }
                                         }
                                     }
                                     .padding(.horizontal, Theme.s4)
@@ -140,6 +152,19 @@ struct YTFeedView: View {
         }
         loading = false
     }
+
+    private func loadMore(shelf: YTShelf) async {
+        guard let cont = shelf.continuation, let i = page?.shelves.firstIndex(where: { $0.id == shelf.id }) else { return }
+        if let more = try? await env.youtube.more(shelf: cont) {
+            let seen = Set(page?.shelves[i].items.map(\.id) ?? [])
+            page?.shelves[i].items.append(contentsOf: more.items.filter { !seen.contains($0.id) })
+            page?.shelves[i].continuation = more.continuation
+        } else {
+            page?.shelves[i].continuation = nil
+        }
+    }
+
+    func refresh() async { await load(force: true) }
 
     private func loadMore() async {
         guard !loadingMore, let cont = page?.continuation else { return }
