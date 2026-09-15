@@ -68,18 +68,24 @@ final class PlaybackController {
     /// Screen mirroring is showing on the car (set from MirrorReceiver state).
     var isMirroring = false
 
+    /// Bumped whenever surface ownership may change (car connects, car player shows/hides).
+    var surfaceRevision: Int { videoViewRevision &* 31 &+ (carIsConnected ? 1 : 0) &+ (isCarPlayerPresented ? 2 : 0) }
+
     /// Phone-side render view.
-    /// - AVPlayer: a second layer mirroring the same player (both screens show video).
-    /// - VLC: one drawable. The car is the primary screen — it always wins while its
-    ///   player is visible; the phone gets the drawable only when the car isn't showing it.
+    /// - AVPlayer: the phone keeps the primary view; the car gets a mirror layer.
+    /// - VLC: one drawable. The car wins while its player is on screen; otherwise phone.
     func phoneVideoView() -> UIView? {
         if !carIsConnected { return engine.videoView }
-        if engine.makeMirrorViewSupported { return engine.makeMirrorView() }
+        if engine.makeMirrorViewSupported { return engine.videoView }
         return isCarPlayerPresented ? nil : engine.videoView
     }
 
-    /// Car-side render view — never nil. The car always shows video.
-    func carVideoView() -> UIView { engine.videoView }
+    /// Car-side render view — never nil. AVPlayer: a fresh mirror layer (so the phone
+    /// keeps its own); VLC: the single drawable.
+    func carVideoView() -> UIView {
+        if engine.makeMirrorViewSupported, let mirror = engine.makeMirrorView() { return mirror }
+        return engine.videoView
+    }
 
     // MARK: Dependencies
 

@@ -4,11 +4,22 @@ import UIKit
 /// Car-side surface. Always shows video; the car is the primary screen.
 struct VideoSurface: View {
     @Environment(PlaybackController.self) private var playback
+    @State private var view: UIView?
 
     var body: some View {
-        HostedVideoView(view: playback.carVideoView(), key: "car-\(playback.videoViewRevision)")
-            .onAppear { playback.isCarPlayerPresented = true }
-            .onDisappear { playback.isCarPlayerPresented = false }
+        Group {
+            if let view {
+                HostedVideoView(view: view, key: "car-\(playback.videoViewRevision)")
+            } else {
+                Color.black
+            }
+        }
+        .task(id: playback.videoViewRevision) {
+            // Resolve once per engine generation so we don't mint a new mirror layer every render.
+            view = playback.carVideoView()
+        }
+        .onAppear { playback.isCarPlayerPresented = true }
+        .onDisappear { playback.isCarPlayerPresented = false }
     }
 }
 
@@ -19,7 +30,7 @@ struct PhoneVideoSurface: View {
 
     var body: some View {
         if let view = playback.phoneVideoView() {
-            HostedVideoView(view: view, key: "phone-\(playback.videoViewRevision)-\(playback.carIsConnected)-\(playback.isCarPlayerPresented)")
+            HostedVideoView(view: view, key: "phone-\(playback.surfaceRevision)")
         } else {
             YieldedSurfaceCard(item: playback.current, text: "Playing on your car screen")
         }
@@ -35,7 +46,7 @@ private struct HostedVideoView: UIViewRepresentable {
         let c = VideoSurfaceContainer(); c.host(view); c.key = key; return c
     }
     func updateUIView(_ c: VideoSurfaceContainer, context: Context) {
-        if c.key != key || c.hosted !== view { c.host(view); c.key = key }
+        if c.key != key || c.hosted !== view || view.superview !== c { c.host(view); c.key = key }
     }
     static func dismantleUIView(_ c: VideoSurfaceContainer, coordinator: ()) {
         // Give the drawable back so the other surface can pick it up.

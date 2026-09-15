@@ -142,6 +142,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     var makeMirrorViewSupported: Bool { true }
 
     func makeMirrorView() -> UIView? {
+        mirrors.removeAll { $0.superview == nil && $0.window == nil }
         let v = PlayerLayerView()
         v.playerLayer.player = player
         v.playerLayer.videoGravity = playerLayer.videoGravity

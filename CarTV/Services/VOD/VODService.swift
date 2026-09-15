@@ -136,6 +136,43 @@ final class VODService {
         }
     }
 
+    /// Where the user is in a series: the most recently watched episode (with its
+    /// season) and whether it's mid-episode or finished. Drives "Continue S2 E4"
+    /// on both phone and car. nil = never started.
+    struct SeriesPosition {
+        let episode: VODEpisode
+        let season: VODSeason
+        let progress: WatchProgress?
+        var isMidEpisode: Bool { (progress?.completed == false) && (progress?.position ?? 0) > 5 }
+    }
+
+    func position(in series: VODSeries) -> SeriesPosition? {
+        loadPlayedIfNeeded()
+        let store = AppEnvironment.shared.progress
+        return played.values
+            .filter { $0.series.id == series.id }
+            .compactMap { p -> (PlayedEpisode, WatchProgress)? in
+                guard let w = store.progress(for: PlayableRef(id: p.episode.playableID, kind: .vod)) else { return nil }
+                return (p, w)
+            }
+            .max { $0.1.lastWatchedAt < $1.1.lastWatchedAt }
+            .map { SeriesPosition(episode: $0.0.episode, season: $0.0.season, progress: $0.1) }
+    }
+
+    /// Series with any watch history, newest first. For a "Continue Watching" shelf.
+    func seriesInProgress(limit: Int = 12) -> [(series: VODSeries, position: SeriesPosition)] {
+        loadPlayedIfNeeded()
+        var seen: Set<String> = []
+        return played.values
+            .sorted { $0.at > $1.at }
+            .compactMap { p -> (VODSeries, SeriesPosition)? in
+                guard !seen.contains(p.series.id), let pos = position(in: p.series) else { return nil }
+                seen.insert(p.series.id)
+                return (p.series, pos)
+            }
+            .prefix(limit).map { $0 }
+    }
+
     // MARK: Lookup
 
     func movie(id: String) -> VODMovie? { movies.first { $0.id == id } }

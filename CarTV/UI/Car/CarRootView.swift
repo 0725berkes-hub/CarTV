@@ -15,12 +15,22 @@ enum CarRoute: Hashable {
     case playlist(Playlist)
     case genre(Playlist, Genre?)
     case folder(VideoFolder)
+    case movies                       // MyTV+ movie categories
+    case movieCategory(String)
+    case series                       // MyTV+ series categories
+    case seriesCategory(String)
+    case seriesDetail(VODSeries)      // seasons + episodes
 
     var title: String {
         switch self {
         case .playlist(let p): p.name
         case .genre(let p, let g): g.map { String(localized: $0.title) } ?? p.name
         case .folder(let f): f.name
+        case .movies: String(localized: "Movies")
+        case .movieCategory(let c): c
+        case .series: String(localized: "Series")
+        case .seriesCategory(let c): c
+        case .seriesDetail(let s): s.title
         }
     }
 }
@@ -96,6 +106,12 @@ struct CarRootView: View {
             if active, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
         .onAppear { if playback.isActive { showPlayer = true } }
+        .task {
+            // The car scene can attach after playback began on the phone; make sure the
+            // player is up and its surface hosted once the view tree exists.
+            try? await Task.sleep(for: .milliseconds(150))
+            if playback.isActive, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+        }
     }
 }
 
@@ -128,6 +144,11 @@ struct CarNavHost<Root: View>: View {
                     case .playlist(let p):     CarPlaylistView(playlist: p)
                     case .genre(let p, let g): CarChannelGridView(playlist: p, genre: g)
                     case .folder(let f):       CarVideosGridView(folder: f)
+                    case .movies:              CarVODCategoriesView(kind: .movies)
+                    case .movieCategory(let c): CarMovieGridView(category: c)
+                    case .series:              CarVODCategoriesView(kind: .series)
+                    case .seriesCategory(let c): CarSeriesGridView(category: c)
+                    case .seriesDetail(let s): CarSeriesDetailView(series: s)
                     }
                 }
                 .id(route)
