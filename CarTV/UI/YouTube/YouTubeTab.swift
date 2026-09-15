@@ -194,8 +194,9 @@ struct YTFeedView: View {
         guard let cont = shelf.continuation, let i = page?.shelves.firstIndex(where: { $0.id == shelf.id }) else { return }
         if let more = try? await env.youtube.more(shelf: cont) {
             let seen = Set(page?.shelves[i].items.map(\.id) ?? [])
-            page?.shelves[i].items.append(contentsOf: more.items.filter { !seen.contains($0.id) })
-            page?.shelves[i].continuation = more.continuation
+            let fresh = more.items.filter { !seen.contains($0.id) }
+            page?.shelves[i].items.append(contentsOf: fresh)
+            page?.shelves[i].continuation = fresh.isEmpty ? nil : more.continuation
         } else {
             page?.shelves[i].continuation = nil
         }
@@ -216,7 +217,7 @@ struct YTFeedView: View {
                     let seen = Set(page?.flatItems.map(\.id) ?? [])
                     let fresh = more.items.filter { !seen.contains($0.id) }
                     page?.shelves[i].items.append(contentsOf: fresh)
-                    page?.shelves[i].continuation = more.continuation
+                    page?.shelves[i].continuation = fresh.isEmpty ? nil : more.continuation
                     grew = grew || !fresh.isEmpty
                 } else if let i = page?.shelves.firstIndex(where: { $0.id == sh.id }) {
                     page?.shelves[i].continuation = nil

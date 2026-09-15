@@ -100,20 +100,26 @@ struct CarYouTubeView: View {
     private func loadMore() async {
         guard var p = page else { return }
         var grew = false
+        // The car grid shows every shelf flattened, so dedupe against the WHOLE page,
+        // not just the shelf being extended — otherwise videos that already appear
+        // in another shelf come back as "new" rows further down.
+        var seen = Set(p.flatItems.map(\.id))
         for i in p.shelves.indices {
             guard let c = p.shelves[i].continuation else { continue }
             if let more = try? await env.youtube.more(shelf: c) {
-                let seen = Set(p.shelves[i].items.map(\.id))
-                let fresh = more.items.filter { !seen.contains($0.id) }
-                p.shelves[i].items.append(contentsOf: fresh); p.shelves[i].continuation = more.continuation
+                let fresh = more.items.filter { seen.insert($0.id).inserted }
+                p.shelves[i].items.append(contentsOf: fresh)
+                // A page with nothing new means this shelf is exhausted (YouTube keeps
+                // handing out tokens that loop over the same items).
+                p.shelves[i].continuation = fresh.isEmpty ? nil : more.continuation
                 grew = grew || !fresh.isEmpty
             } else { p.shelves[i].continuation = nil }
         }
         if let c = p.continuation {
             if let more = try? await env.youtube.fetch(feed, continuation: c) {
-                let seen = Set(p.flatItems.map(\.id))
-                let shelves = more.shelves.map { sh in var s = sh; s.items = s.items.filter { !seen.contains($0.id) }; return s }.filter { !$0.items.isEmpty }
-                p.shelves.append(contentsOf: shelves); p.continuation = more.continuation
+                let shelves = more.shelves.map { sh in var s = sh; s.items = s.items.filter { seen.insert($0.id).inserted }; return s }.filter { !$0.items.isEmpty }
+                p.shelves.append(contentsOf: shelves)
+                p.continuation = shelves.isEmpty ? nil : more.continuation
                 grew = grew || !shelves.isEmpty
             } else { p.continuation = nil }
         }
