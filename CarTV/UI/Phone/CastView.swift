@@ -21,24 +21,16 @@ struct CastView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.s6) {
-                    hero
-                    mirrorCard
-                    linkCard
-                    localCard
-                    if !playback.carIsConnected {
-                        Label("Connect your iPhone to CarPlay to see this on the car screen.", systemImage: "info.circle")
-                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(.horizontal, Theme.s4)
-                .padding(.bottom, Theme.s10)
+            List {
+                statusSection
+                mirrorSection
+                linkSection
+                localSection
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())
-            .navigationTitle("Cast to Car")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Cast")
             .fileImporter(isPresented: $showFilePicker, allowedContentTypes: LocalImporter.videoTypes, allowsMultipleSelection: false) { result in
                 if case .success(let urls) = result, let url = urls.first { castFile(url) }
             }
@@ -61,97 +53,77 @@ struct CastView: View {
         }
     }
 
-    // MARK: Sections
+    // MARK: Sections — same grouped-list language as Settings.
 
-    private var hero: some View {
-        VStack(spacing: Theme.s3) {
-            HStack(spacing: Theme.s4) {
-                Image(systemName: "iphone").font(.system(size: 34, weight: .light))
-                Image(systemName: "arrow.right").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.accent)
-                Image(systemName: "car.fill").font(.system(size: 34, weight: .light)).foregroundStyle(Theme.accent)
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.top, Theme.s6)
-            Text("Cast anything to your car").font(Theme.Font.title).foregroundStyle(Theme.ink)
-            HStack(spacing: 6) {
-                Circle().fill(playback.carIsConnected ? Theme.accent : Theme.inkFaint).frame(width: 8, height: 8)
-                Text(playback.carIsConnected ? "Car connected" : "Car not connected").font(.subheadline).foregroundStyle(playback.carIsConnected ? Theme.accent : Theme.inkMuted)
+    private var statusSection: some View {
+        Section {
+            HStack(spacing: Theme.s3) {
+                ZStack {
+                    Circle().fill(playback.carIsConnected ? Theme.accent.opacity(0.18) : Theme.raised).frame(width: 44, height: 44)
+                    Image(systemName: "car.fill").foregroundStyle(playback.carIsConnected ? Theme.accent : Theme.inkMuted)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(playback.carIsConnected ? "Car connected" : "CarPlay not connected").font(Theme.Font.headline)
+                    Text(playback.carIsConnected ? "Anything you cast plays on the car screen." : "Connect your iPhone to CarPlay to cast to the car.")
+                        .font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, Theme.s2)
     }
 
-    private var mirrorCard: some View {
-        VStack(alignment: .leading, spacing: Theme.s3) {
+    private var mirrorSection: some View {
+        Section {
             HStack(spacing: Theme.s3) {
                 Image(systemName: mirroring ? "record.circle" : "rectangle.on.rectangle")
-                    .font(.system(size: 24, weight: .semibold)).foregroundStyle(mirroring ? Theme.live : Theme.accent).frame(width: 36)
+                    .font(.system(size: 18, weight: .semibold)).foregroundStyle(mirroring ? Theme.live : Theme.accent).frame(width: 32)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(mirroring ? "Mirroring to the car display" : "Mirror iPhone screen").font(.headline).foregroundStyle(Theme.ink)
+                    Text(mirroring ? "Mirroring to the car" : "Mirror iPhone screen").font(Theme.Font.headline).foregroundStyle(Theme.ink)
                     Text(mirroring
-                         ? "Open any app. What's on your iPhone appears on the car screen."
-                         : "Show your iPhone's screen on the car display. Works with any app.")
-                        .font(.subheadline).foregroundStyle(Theme.inkMuted)
+                         ? "\(Int(env.mirror.frameSize.width))×\(Int(env.mirror.frameSize.height)) · \(env.mirror.fps) fps"
+                         : "Show whatever is on your iPhone on the car display.")
+                        .font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
                 }
             }
-            if mirroring {
-                HStack {
-                    Label("\(Int(env.mirror.frameSize.width))×\(Int(env.mirror.frameSize.height)) · \(env.mirror.fps) fps", systemImage: "waveform.path")
-                        .font(.footnote.monospacedDigit()).foregroundStyle(Theme.inkFaint)
-                    Spacer()
-                }
-            }
-            // The system picker is the only sanctioned way to start a broadcast.
+            // The system picker is the only sanctioned way to start a broadcast; it stays
+            // prominent glass because it's the one primary action on this screen.
             BroadcastPickerButton(isMirroring: mirroring)
-                .frame(height: 50)
-        }
-        .padding(Theme.s4)
-        .glassEffect(.regular.tint(mirroring ? Theme.live.opacity(0.12) : nil), in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
+                .frame(height: 48)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 10, trailing: 16))
+        } header: { Text("Screen") }
     }
 
-    private var linkCard: some View {
-        VStack(alignment: .leading, spacing: Theme.s3) {
-            HStack(spacing: Theme.s3) {
-                Image(systemName: "link").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Play a link").font(.headline).foregroundStyle(Theme.ink)
-                    Text("Paste a direct video or stream URL. Copied links are picked up automatically.").font(.subheadline).foregroundStyle(Theme.inkMuted)
-                }
-            }
+    private var linkSection: some View {
+        Section {
             HStack(spacing: Theme.s2) {
-                TextField("https://…", text: $linkText)
-                    .textFieldStyle(.plain)
+                Image(systemName: "link").foregroundStyle(Theme.inkMuted)
+                TextField("Paste a video or stream URL", text: $linkText)
                     .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .focused($linkFocused)
                     .submitLabel(.go)
                     .onSubmit(castLink)
-                    .padding(.horizontal, Theme.s3).frame(height: 44)
-                    .glassEffect(.regular, in: Capsule())
-                Button(action: castLink) {
-                    Image(systemName: "play.fill").font(.headline).frame(width: 44, height: 44)
+                if !linkText.isEmpty {
+                    Button { linkText = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.inkFaint) }
+                        .buttonStyle(.plain)
                 }
-                .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
-                .disabled(URL.lenient(linkText) == nil)
-                .accessibilityLabel("Play link on car")
             }
-            if let linkError { Text(linkError).font(.footnote).foregroundStyle(Theme.amber) }
+            Button(action: castLink) {
+                Label("Play on car", systemImage: "play.fill")
+            }
+            .disabled(URL.lenient(linkText) == nil)
+            if let linkError { Text(linkError).font(Theme.Font.caption).foregroundStyle(Theme.amber) }
+        } header: { Text("Link") } footer: {
+            Text("Copied links are picked up automatically when you open this tab.")
         }
-        .padding(Theme.s4)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
     }
 
-    private var localCard: some View {
-        VStack(alignment: .leading, spacing: Theme.s2) {
-            Text("Local videos").eyebrow().padding(.leading, Theme.s1)
-            HStack(spacing: Theme.s2) {
-                QuickAction(symbol: "folder", title: "Choose Files") { showFilePicker = true }
-                QuickAction(symbol: "photo.on.rectangle.angled", title: "From Photos") { showPhotoPicker = true }
-            }
+    private var localSection: some View {
+        Section {
+            Button { showFilePicker = true } label: { Label("Choose a file", systemImage: "folder") }
+            Button { showPhotoPicker = true } label: { Label("From Photos", systemImage: "photo.on.rectangle.angled") }
             if case .importing(_, _, let name) = importPhase {
-                HStack(spacing: Theme.s2) { ProgressView().controlSize(.small); Text(name).font(.footnote).foregroundStyle(Theme.inkMuted) }
+                HStack(spacing: Theme.s2) { ProgressView().controlSize(.small); Text(name).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted) }
             }
-        }
+        } header: { Text("Video from this iPhone") }
     }
 
     // MARK: Actions

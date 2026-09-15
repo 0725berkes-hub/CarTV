@@ -176,6 +176,7 @@ final class VODService {
     // MARK: Lookup
 
     func movie(id: String) -> VODMovie? { movies.first { $0.id == id } }
+    func movie(playableID: UUID) -> VODMovie? { movies.first { $0.playableID == playableID } }
     func series(id: String) -> VODSeries? { series.first { $0.id == id } }
 
     func search(_ query: String, limit: Int = 60) -> (movies: [VODMovie], series: [VODSeries]) {

@@ -67,6 +67,8 @@ final class AppEnvironment {
         didBootstrap = true
         AudioSessionController.configure()
         playback.attachNowPlaying()
+        // Register Siri phrases so "play K24 on CarTV" works on first launch.
+        CarTVShortcuts.updateAppShortcutParameters()
         #if DLNA_RECEIVER
         cast.start()   // needs com.apple.developer.networking.multicast
         #endif

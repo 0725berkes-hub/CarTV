@@ -188,14 +188,26 @@ struct ContinueWatchingShelf: View {
     var body: some View {
         let _ = env.progress.revision
         let _ = env.vod.movies.count    // VOD items resolve from the in-memory catalogue
-        let items = env.progress.continueWatching(limit: 12)
-        if !items.isEmpty {
-            HomeSection(title: "Continue Watching", count: items.count, symbol: "play.circle.fill") {
+        // Movies + local videos with a resume point; series appear once, at the episode
+        // you're on (mid-episode → resume it; finished → next one), like Netflix's row.
+        let series = env.vod.seriesInProgress(limit: 8)
+        let seriesEpisodeIDs = Set(series.map(\.position.episode.playableID))
+        let items = env.progress.continueWatching(limit: 12).filter { !seriesEpisodeIDs.contains($0.0.id) }
+        if !items.isEmpty || !series.isEmpty {
+            HomeSection(title: "Continue Watching", count: items.count + series.count, symbol: "play.circle.fill") {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: Theme.s3) {
+                        ForEach(series, id: \.series.id) { s, pos in
+                            Button { resume(series: s, at: pos) } label: {
+                                ContinueCard(title: s.title, subtitle: episodeLabel(pos), artwork: pos.season.poster ?? s.poster,
+                                             fraction: pos.isMidEpisode ? (pos.progress?.fraction ?? 0) : 0)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         ForEach(items, id: \.0.id) { item, p in
                             Button { playback.play(item, origin: .phone, resume: true) } label: {
-                                ContinueCard(item: item, progress: p)
+                                ContinueCard(title: item.title, subtitle: String(localized: "\((p.duration - p.position).clockString) left"),
+                                             artwork: item.artworkURL, fraction: p.fraction)
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
@@ -209,38 +221,50 @@ struct ContinueWatchingShelf: View {
             }
         }
     }
+
+    private func episodeLabel(_ pos: VODService.SeriesPosition) -> String {
+        let ep = "S\(pos.season.name) · E\(pos.episode.number)"
+        if pos.isMidEpisode, let p = pos.progress { return "\(ep) · \((p.duration - p.position).clockString) left" }
+        return String(localized: "Next: S\(pos.season.name) · E\(pos.episode.number + 1)")
+    }
+
+    private func resume(series: VODSeries, at pos: VODService.SeriesPosition) {
+        Task {
+            let eps = (try? await env.vod.episodes(for: pos.season)) ?? [pos.episode]
+            let target: VODEpisode
+            if pos.isMidEpisode { target = pos.episode }
+            else if let i = eps.firstIndex(where: { $0.id == pos.episode.id }), i + 1 < eps.count { target = eps[i + 1] }
+            else { target = pos.episode }
+            let queue = eps.map { PlayableItem(episode: $0, series: series, season: pos.season) }
+            guard let item = queue.first(where: { $0.id == target.playableID }) else { return }
+            env.vod.rememberPlayed(episodes: eps, series: series, season: pos.season)
+            playback.play(item, queue: queue, origin: .phone, resume: true)
+        }
+    }
 }
 
 private struct ContinueCard: View {
-    let item: PlayableItem
-    let progress: WatchProgress
+    let title: String
+    let subtitle: String
+    let artwork: URL?
+    let fraction: Double
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottom) {
                 ZStack {
-                    TileTint.gradient(for: item.title)
-                    RemoteImage(url: item.artworkURL, targetSize: CGSize(width: 480, height: 270), contentMode: .fill) {
+                    TileTint.gradient(for: title)
+                    RemoteImage(url: artwork, targetSize: CGSize(width: 480, height: 270), contentMode: .fill) {
                         Image(systemName: "play.rectangle").font(.system(size: 28, weight: .light)).foregroundStyle(.white.opacity(0.6))
                     }
                     LinearGradient(colors: [.clear, .clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
                     Image(systemName: "play.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white).shadow(radius: 4)
                 }
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text("\((progress.duration - progress.position).clockString) left")
-                        Spacer()
-                        Text("\(Int(progress.fraction * 100))%")
-                    }
-                    .font(.system(size: 10.5, weight: .bold)).monospacedDigit().foregroundStyle(.white.opacity(0.9))
-                    ProgressBar(fraction: progress.fraction, height: 3)
-                }
-                .padding(8)
+                if fraction > 0.01 { ProgressBar(fraction: fraction, height: 3).padding(.horizontal, 8).padding(.bottom, 8) }
             }
-            .frame(width: 220)
-            .aspectRatio(16/9, contentMode: .fit)
+            .frame(width: 220, height: 124)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
-            Text(item.title).font(Theme.Font.tile).foregroundStyle(Theme.ink).lineLimit(1)
-            if let sub = item.subtitle { Text(sub).font(Theme.Font.label).foregroundStyle(Theme.inkMuted).lineLimit(1) }
+            Text(title).font(Theme.Font.tile).foregroundStyle(Theme.ink).lineLimit(1)
+            Text(subtitle).font(Theme.Font.label).foregroundStyle(Theme.inkMuted).lineLimit(1)
         }
         .frame(width: 220)
         .contentShape(Rectangle())
@@ -258,12 +282,11 @@ struct FavoritesShelf: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: Theme.s2) {
                         ForEach(items.prefix(20)) { item in
-                            Button { playback.play(item, queue: items, origin: .phone) } label: {
-                                if item.isLocal {
-                                    VideoThumbCell(item: item, isFavorite: true).frame(width: 104)
-                                } else {
-                                    ChannelTile(item: item, isFavorite: true, isPlaying: playback.current?.id == item.id, compact: true).frame(width: 140)
-                                }
+                            Button { playback.play(item, queue: items, origin: .phone, resume: true) } label: {
+                                // In a horizontal shelf all cells share one height: wide 16:9
+                                // for channels, portrait for movies/videos, both 100pt tall.
+                                ItemCell(item: item)
+                                    .frame(width: item.ref.kind == .channel ? 178 : 100)
                             }
                             .buttonStyle(.plain)
                             .contextMenu { ItemContextMenu(item: item) }

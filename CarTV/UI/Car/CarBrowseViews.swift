@@ -238,8 +238,33 @@ struct CarGrid: View {
     }
 
     var body: some View {
+        let channels = items.filter { $0.ref.kind == .channel }
+        let portrait = items.filter { $0.ref.kind != .channel }
+        if !channels.isEmpty && !portrait.isEmpty {
+            // Mixed list (Favorites): never put a 16:9 tile next to a 2:3 poster.
+            ScrollView {
+                VStack(alignment: .leading, spacing: m.compact ? Theme.s4 : Theme.s6) {
+                    Text("Channels").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.horizontal, m.gutter)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: m.tileWidth * 1.15), spacing: Theme.s3)], spacing: Theme.s3) {
+                        ForEach(channels) { item in CarTileButton(item: item, queue: channels, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
+                    }
+                    .padding(.horizontal, m.gutter)
+                    Text("Movies & Videos").font(Theme.Car.title(m.compact ? 14 : 18)).foregroundStyle(Theme.ink).padding(.horizontal, m.gutter)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: m.tileWidth * 0.8), spacing: Theme.s3)], spacing: Theme.s3) {
+                        ForEach(portrait) { item in CarTileButton(item: item, queue: portrait, progress: env.progress.progress(for: item.ref)?.fraction, fixedWidth: false) }
+                    }
+                    .padding(.horizontal, m.gutter)
+                }
+                .padding(.top, Theme.s2).padding(.bottom, m.gutter)
+            }
+        } else {
+            uniformGrid
+        }
+    }
+
+    private var uniformGrid: some View {
         let cols = [GridItem(.adaptive(minimum: wide ? m.tileWidth * 0.8 : m.tileWidth * 1.15), spacing: Theme.s3)]
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             HStack(spacing: 0) {
                 ScrollView {
                     shuffleRow
@@ -343,13 +368,18 @@ struct CarTileButton: View {
             playback.play(item, queue: queue, origin: .car)
         } label: {
             Group {
-                if item.isLocal {
-                    VideoThumbCell(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
-                } else {
+                switch item.ref.kind {
+                case .channel:
                     ChannelTile(item: item, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id, progress: progress, compact: m.compact)
+                case .vod:
+                    PosterTile(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
+                case .localVideo:
+                    VideoThumbCell(item: item, progress: progress, isFavorite: env.favorites.isFavorite(item), isPlaying: playback.current?.id == item.id)
                 }
             }
-            .if(fixedWidth) { $0.frame(width: item.isLocal ? m.tileWidth * 0.72 : m.tileWidth) }
+            // Portrait shapes (posters, video thumbs) share one narrower width so
+            // they line up; channels get the wide 16:9 width.
+            .if(fixedWidth) { $0.frame(width: item.ref.kind == .channel ? m.tileWidth : m.tileWidth * 0.68) }
             .padding(6)
             .contentShape(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
         }

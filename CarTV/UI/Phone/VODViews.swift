@@ -205,9 +205,12 @@ struct MoviePoster: View {
 }
 
 struct SeriesPoster: View {
+    @Environment(AppEnvironment.self) private var env
     let series: VODSeries
     var width: CGFloat = 118
     var body: some View {
+        let _ = env.progress.revision
+        let pos = env.vod.position(in: series)
         VStack(alignment: .leading, spacing: 6) {
             ZStack {
                 TileTint.gradient(for: series.title)
@@ -217,11 +220,16 @@ struct SeriesPoster: View {
                 if series.rating.nilIfEmpty != nil {
                     VStack { HStack { Spacer(); RatingBadge(text: series.rating) }; Spacer() }.padding(6)
                 }
+                if pos?.isMidEpisode == true, let f = pos?.progress?.fraction { VStack { Spacer(); ProgressBar(fraction: f, height: 2.5) } }
             }
             .aspectRatio(2/3, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusS, style: .continuous))
             Text(series.title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-            Text(series.seasons == 1 ? "1 season" : "\(series.seasons) seasons").font(Theme.Font.label).foregroundStyle(Theme.inkMuted)
+            if let pos {
+                Text("S\(pos.season.name) · E\(pos.episode.number)").font(Theme.Font.label).foregroundStyle(Theme.accent)
+            } else {
+                Text(series.seasons == 1 ? "1 season" : "\(series.seasons) seasons").font(Theme.Font.label).foregroundStyle(Theme.inkMuted)
+            }
         }
         .frame(width: width)
         .contentShape(Rectangle())
@@ -383,6 +391,8 @@ struct SeriesDetailView: View {
                     }
                     if let s = season, s.actors.nilIfEmpty != nil { CreditLine(label: "Cast", value: s.actors) }
 
+                    continueButton
+
                     if loadingSeasons {
                         HStack { ProgressView().controlSize(.small); Text("Loading seasons…").font(Theme.Font.caption).foregroundStyle(Theme.inkMuted) }
                     } else if let error {
@@ -436,10 +446,50 @@ struct SeriesDetailView: View {
             VStack(spacing: Theme.s1) {
                 ForEach(episodes) { ep in
                     EpisodeRow(episode: ep,
-                               progress: env.progress.progress(for: PlayableRef(id: ep.playableID, kind: .vod))?.fraction,
-                               isPlaying: playback.current?.id == ep.playableID) { play(ep) }
+                               progress: env.progress.progress(for: PlayableRef(id: ep.playableID, kind: .vod)),
+                               isPlaying: playback.current?.id == ep.playableID,
+                               isLastWatched: env.vod.position(in: series)?.episode.id == ep.id) { play(ep) }
                 }
             }
+        }
+    }
+
+    /// "Resume S2 · E4 · 31:07 left" if mid-episode, "Continue S2 · E5" if the last one
+    /// finished, "Play S1 · E1" if never started. One tap, same as the row on Home.
+    @ViewBuilder private var continueButton: some View {
+        let pos = env.vod.position(in: series)
+        if let pos {
+            Button { resume(pos) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.fill")
+                    if pos.isMidEpisode, let p = pos.progress {
+                        Text("Resume S\(pos.season.name) · E\(pos.episode.number)")
+                        Text("· \((p.duration - p.position).clockString) left").foregroundStyle(.black.opacity(0.6))
+                    } else {
+                        Text("Continue S\(pos.season.name) · E\(pos.episode.number + 1)")
+                    }
+                }
+                .font(Theme.Font.headline).frame(maxWidth: .infinity).frame(height: 48)
+            }
+            .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
+        } else if !loadingSeasons, let first = episodes.first, let season {
+            Button { play(first) } label: {
+                Label("Play S\(season.name) · E\(first.number)", systemImage: "play.fill")
+                    .font(Theme.Font.headline).frame(maxWidth: .infinity).frame(height: 48)
+            }
+            .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
+        }
+    }
+
+    private func resume(_ pos: VODService.SeriesPosition) {
+        Task {
+            let eps = (try? await env.vod.episodes(for: pos.season)) ?? [pos.episode]
+            let target: VODEpisode
+            if pos.isMidEpisode { target = pos.episode }
+            else if let i = eps.firstIndex(where: { $0.id == pos.episode.id }), i + 1 < eps.count { target = eps[i + 1] }
+            else { target = pos.episode }
+            if season?.id != pos.season.id { season = pos.season; episodes = eps }
+            play(target)
         }
     }
 
@@ -448,7 +498,9 @@ struct SeriesDetailView: View {
         do {
             seasons = try await env.vod.seasons(for: series)
             loadingSeasons = false
-            if let first = seasons.first { await select(first) } else { error = String(localized: "No seasons available") }
+            let pos = env.vod.position(in: series)
+            let target = pos.flatMap { p in seasons.first { $0.id == p.season.id } } ?? seasons.first
+            if let target { await select(target) } else { error = String(localized: "No seasons available") }
         } catch {
             loadingSeasons = false
             self.error = String(localized: "Couldn't load seasons")
@@ -474,24 +526,35 @@ struct SeriesDetailView: View {
 
 private struct EpisodeRow: View {
     let episode: VODEpisode
-    let progress: Double?
+    let progress: WatchProgress?
     let isPlaying: Bool
+    var isLastWatched = false
     let action: () -> Void
     var body: some View {
+        let watched = progress?.completed == true
+        let mid = (progress?.completed == false) && (progress?.position ?? 0) > 5
         Button(action: action) {
             HStack(spacing: Theme.s3) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous).fill(isPlaying ? Theme.accent.opacity(0.18) : Theme.raised).frame(width: 44, height: 44)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isPlaying ? Theme.accent.opacity(0.18) : (isLastWatched ? Theme.accent.opacity(0.1) : Theme.raised)).frame(width: 44, height: 44)
                     if isPlaying { EqualizerBars().scaleEffect(0.6) }
+                    else if watched { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.accent) }
                     else { Text("\(episode.number)").font(Theme.Font.headline).monospacedDigit().foregroundStyle(Theme.ink) }
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Episode \(episode.number)").font(Theme.Font.callout.weight(.semibold)).foregroundStyle(Theme.ink)
                     HStack(spacing: 6) {
-                        if !episode.subtitles.isEmpty { MetaChip("CC", accent: true, small: true) }
-                        if let progress, progress > 0.02 {
-                            ProgressBar(fraction: progress, height: 2).frame(width: 60)
+                        Text("Episode \(episode.number)").font(Theme.Font.callout.weight(.semibold)).foregroundStyle(Theme.ink)
+                        if isLastWatched && !isPlaying { MetaChip(mid ? "Resume" : "Last watched", accent: true, small: true) }
+                    }
+                    HStack(spacing: 6) {
+                        if mid, let p = progress {
+                            ProgressBar(fraction: p.fraction, height: 2).frame(width: 60)
+                            Text("\((p.duration - p.position).clockString) left").font(Theme.Font.label).monospacedDigit().foregroundStyle(Theme.inkMuted)
+                        } else if watched {
+                            Text("Watched").font(Theme.Font.label).foregroundStyle(Theme.inkMuted)
                         }
+                        if !episode.subtitles.isEmpty { MetaChip("CC", accent: true, small: true) }
                     }
                 }
                 Spacer()

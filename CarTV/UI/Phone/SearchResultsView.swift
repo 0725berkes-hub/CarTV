@@ -32,11 +32,11 @@ struct SearchResultsView: View {
                 }
                 if !videos.isEmpty {
                     ShelfHeader(title: "Videos", subtitle: String(localized: "\(videos.count) videos"))
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Theme.s3)], spacing: Theme.s4) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 140), spacing: Theme.s3)], alignment: .leading, spacing: Theme.s4) {
                         ForEach(videos) { video in
                             let item = PlayableItem(video: video)
-                            Button { playback.play(item, queue: videos.map(PlayableItem.init(video:)), origin: .phone) } label: {
-                                VideoCard(item: item, progress: env.progress.progress(for: item.ref)?.fraction, isFavorite: env.favorites.isFavorite(item))
+                            Button { playback.play(item, queue: videos.map(PlayableItem.init(video:)), origin: .phone, resume: true) } label: {
+                                ItemCell(item: item)
                             }
                             .buttonStyle(.plain)
                             .contextMenu { ItemContextMenu(item: item) }
