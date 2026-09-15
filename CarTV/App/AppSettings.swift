@@ -71,6 +71,20 @@ final class AppSettings {
         mytvEnabled = defaults.bool(forKey: Keys.mytv)
     }
 
+    /// Re-read every value after the defaults domain was wiped (Clear All Data).
+    /// Assigning through the properties re-persists them, which is what we want:
+    /// the live object and the store agree on the fresh defaults.
+    func reloadFromDefaults() {
+        appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
+        softwareDecoding = defaults.bool(forKey: Keys.softwareDecoding)
+        livePreviews = defaults.object(forKey: Keys.livePreviews) as? Bool ?? true
+        healthChecks = defaults.object(forKey: Keys.healthChecks) as? Bool ?? true
+        hasCompletedOnboarding = defaults.bool(forKey: Keys.onboarding)
+        languageOverride = defaults.string(forKey: Keys.language)
+        subtitleLanguage = defaults.string(forKey: Keys.subtitleLanguage)
+        mytvEnabled = defaults.bool(forKey: Keys.mytv)
+    }
+
     private enum Keys {
         static let appearance = "settings.appearance"
         static let softwareDecoding = "settings.softwareDecoding"

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 // MARK: - Feed items
 
@@ -72,7 +73,7 @@ nonisolated struct YTComment: Identifiable, Sendable {
 
 nonisolated struct YTFormat: Sendable, Hashable {
     let itag: Int
-    let url: URL
+    var url: URL
     let mimeType: String          // e.g. video/mp4; codecs="avc1.640028"
     let bitrate: Int
     let width: Int?
@@ -114,7 +115,7 @@ nonisolated struct YTPlayerResponse: Sendable {
     let keywords: [String]
     let hlsManifestURL: URL?
     let dashManifestURL: URL?
-    let formats: [YTFormat]        // adaptive + progressive
+    var formats: [YTFormat]        // adaptive + progressive
     let isPlayable: Bool
     let playabilityReason: String?
     let expiresAt: Date
@@ -147,7 +148,14 @@ nonisolated struct YTPlayerResponse: Sendable {
 
         var fmts: [YTFormat] = []
         for f in sd["adaptiveFormats"].array + sd["formats"].array {
-            guard let urlStr = f["url"].string, let url = URL(string: urlStr), let itag = f["itag"].int, let mime = f["mimeType"].string else { continue }
+            guard let itag = f["itag"].int, let mime = f["mimeType"].string else { continue }
+            // Web clients hand out `signatureCipher` instead of a bare URL; the
+            // signature is applied later by YTChallengeSolver (see `solved()`).
+            var url: URL
+            if let urlStr = f["url"].string, let u = URL(string: urlStr) { url = u }
+            else if let cipher = f["signatureCipher"].string, let c = YTChallengeSolver.parseCipher(cipher) {
+                url = YTChallengeSolver.appending(url: c.url, param: "__cipher_s", value: c.s + "|" + c.sp)
+            } else { continue }
             func range(_ k: String) -> ClosedRange<Int64>? {
                 guard let s = f[k]["start"].string.flatMap(Int64.init), let e = f[k]["end"].string.flatMap(Int64.init) else { return nil }
                 return s...e
@@ -171,6 +179,47 @@ nonisolated struct YTPlayerResponse: Sendable {
         captionTracks = json["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].array.compactMap { t in
             guard let u = t["baseUrl"].string.flatMap(URL.init), let lang = t["languageCode"].string else { return nil }
             return (t["name"].text ?? lang, lang, u)
+        }
+    }
+
+    /// Resolves `n` throttling params and `sig` ciphers on every format URL.
+    /// Must run before the URLs are handed to a player; without it Google serves
+    /// only the first ~1 MB of each stream.
+    func solved() async -> YTPlayerResponse {
+        var nChallenges: [String] = [], sigChallenges: [String] = []
+        var pending: [(idx: Int, n: String?, cipher: (s: String, sp: String)?)] = []
+        for (i, f) in formats.enumerated() {
+            let n = YTChallengeSolver.nParam(of: f.url)
+            var cipher: (String, String)? = nil
+            if let comps = URLComponents(url: f.url, resolvingAgainstBaseURL: false),
+               let raw = comps.queryItems?.first(where: { $0.name == "__cipher_s" })?.value {
+                let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+                if parts.count == 2 { cipher = (parts[0], parts[1]); sigChallenges.append(parts[0]) }
+            }
+            if let n { nChallenges.append(n) }
+            pending.append((i, n, cipher))
+        }
+        guard !nChallenges.isEmpty || !sigChallenges.isEmpty else { return self }
+        do {
+            let r = try await YTChallengeSolver.shared.solve(n: nChallenges, sig: sigChallenges)
+            var copy = self
+            for p in pending {
+                var url = copy.formats[p.idx].url
+                if let n = p.n { url = YTChallengeSolver.replacing(url: url, n: n, nSolved: r.n[n]) }
+                if let c = p.cipher {
+                    // strip the marker, then append the decoded signature
+                    if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                        comps.queryItems = comps.queryItems?.filter { $0.name != "__cipher_s" }
+                        url = comps.url ?? url
+                    }
+                    if let sig = r.sig[c.s] { url = YTChallengeSolver.appending(url: url, param: c.sp, value: sig) }
+                }
+                copy.formats[p.idx].url = url
+            }
+            return copy
+        } catch {
+            Log.network.error("YT challenge solve failed: \(error.localizedDescription, privacy: .public)")
+            return self
         }
     }
 

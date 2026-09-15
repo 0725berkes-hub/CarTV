@@ -67,7 +67,13 @@ struct PhoneRootView: View {
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView { settings.hasCompletedOnboarding = true; showOnboarding = false }
         }
-        .onAppear { if !settings.hasCompletedOnboarding { showOnboarding = true } }
+        .onChange(of: settings.hasCompletedOnboarding, initial: true) { _, done in
+            // Fires on launch and whenever Settings resets the flag (tour again / clear all).
+            // Small delay so a dismissing Settings sheet finishes before the cover appears.
+            if !done {
+                Task { try? await Task.sleep(for: .milliseconds(350)); tab = .home; showOnboarding = true }
+            }
+        }
         .onChange(of: env.library.pendingExternalImports) { _, urls in
             guard let url = urls.first else { return }
             env.library.pendingExternalImports.removeAll()

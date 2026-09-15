@@ -73,6 +73,8 @@ nonisolated final class ImageLoader: @unchecked Sendable {
         }
     }
 
+    func clearMemory() { memory.removeAllObjects() }
+
     func clearDisk() {
         try? FileManager.default.removeItem(at: AppPaths.imageCache)
         _ = AppPaths.imageCache

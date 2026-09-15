@@ -31,6 +31,11 @@ nonisolated final class InnerTubeClient: Sendable {
     /// this client, so every *authenticated* request must be made as it.
     static let tvhtml5 = ClientProfile(name: "TVHTML5", version: "7.20250915.10.00",
         userAgent: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version", clientId: 7)
+    /// Embedded web player: currently the only client that returns full,
+    /// un-capped streams without a PO token (yt-dlp's default). Needs the
+    /// `n`/`sig` challenges solved (YTChallengeSolver) and an embed context.
+    static let webEmbedded = ClientProfile(name: "WEB_EMBEDDED_PLAYER", version: "2.20260708.00.00",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36", clientId: 56)
     static let tv = ClientProfile(name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", version: "2.0",
         userAgent: "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15", clientId: 85)
 
@@ -49,7 +54,7 @@ nonisolated final class InnerTubeClient: Sendable {
     // MARK: - Core request
 
     /// POSTs to an InnerTube endpoint and returns the raw JSON object.
-    func call(_ endpoint: String, client: ClientProfile = InnerTubeClient.web, body: [String: Any] = [:], accessToken: String? = nil, visitorData: String? = nil) async throws -> JSONObject {
+    func call(_ endpoint: String, client: ClientProfile = InnerTubeClient.web, body: [String: Any] = [:], accessToken: String? = nil, visitorData: String? = nil, referer: String? = nil) async throws -> JSONObject {
         var url = base.appending(path: endpoint)
         url.append(queryItems: [URLQueryItem(name: "prettyPrint", value: "false")])
         var req = URLRequest(url: url)
@@ -61,6 +66,7 @@ nonisolated final class InnerTubeClient: Sendable {
         req.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
         req.setValue("en", forHTTPHeaderField: "Accept-Language")
         if let visitorData { req.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id") }
+        if let referer { req.setValue(referer, forHTTPHeaderField: "Referer") }
         if let accessToken { req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
 
         var clientCtx: [String: Any] = [
@@ -91,27 +97,32 @@ nonisolated final class InnerTubeClient: Sendable {
 
     // MARK: - Player (streams)
 
-    /// Resolves playable streams. Tries iOS → ANDROID → TV until one is playable.
+    /// Resolves playable streams. WEB_EMBEDDED_PLAYER first (full streams once
+    /// the URL challenges are solved), then iOS → ANDROID → TV as fallbacks.
     func player(videoID: String, accessToken: String? = nil) async throws -> YTPlayerResponse {
         var lastError: Error = YTError.unavailable("No client succeeded")
-        for client in [InnerTubeClient.ios, InnerTubeClient.android, InnerTubeClient.tv] {
+        let sts = (try? await YTChallengeSolver.shared.player().signatureTimestamp) ?? 20140
+        for client in [InnerTubeClient.webEmbedded, InnerTubeClient.ios, InnerTubeClient.android, InnerTubeClient.tv] {
             do {
                 var body: [String: Any] = [
                     "videoId": videoID,
                     "contentCheckOk": true,
                     "racyCheckOk": true,
-                    "playbackContext": ["contentPlaybackContext": ["html5Preference": "HTML5_PREF_WANTS", "signatureTimestamp": 20140]],
+                    "playbackContext": ["contentPlaybackContext": ["html5Preference": "HTML5_PREF_WANTS", "signatureTimestamp": sts]],
                 ]
-                if client.name.hasPrefix("TVHTML5") {
-                    body["context"] = nil
+                if client.name == "WEB_EMBEDDED_PLAYER" {
+                    body["thirdParty"] = ["embedUrl": "https://www.youtube.com/"]
                 }
-                let json = try await call("player", client: client, body: body, accessToken: nil)
-                let resp = try YTPlayerResponse(json: json)
+                let json = try await call("player", client: client, body: body, accessToken: nil,
+                                          referer: client.name == "WEB_EMBEDDED_PLAYER" ? "https://www.youtube.com/embed/\(videoID)" : nil)
+                var resp = try YTPlayerResponse(json: json)
                 if resp.isPlayable, !resp.formats.isEmpty || resp.hlsManifestURL != nil {
-                    Log.network.info("YT player OK via \(client.name, privacy: .public) for \(videoID, privacy: .public)")
+                    if client.clientId == 56 { resp = await resp.solved() }
+                    Log.network.info("YT player OK via \(client.name, privacy: .public) for \(videoID, privacy: .public) (\(resp.formats.count) formats)")
                     return resp
                 }
                 lastError = YTError.unavailable(resp.playabilityReason ?? "Not playable")
+                Log.network.notice("YT player \(client.name, privacy: .public) not playable: \(resp.playabilityReason ?? "-", privacy: .public)")
             } catch {
                 lastError = error
                 Log.network.error("YT player \(client.name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")

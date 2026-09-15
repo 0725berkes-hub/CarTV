@@ -6,6 +6,8 @@ struct SettingsView: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(\.dismiss) private var dismiss
     @State private var cacheCleared = false
+    @State private var confirmErase = false
+    @State private var confirmEraseAgain = false
 
     private var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -71,6 +73,17 @@ struct SettingsView: View {
                     }.disabled(cacheCleared)
                 }
 
+                Section {
+                    Button { AppReset.restartOnboarding(env: env); dismiss() } label: {
+                        Label("Show Welcome Tour Again", systemImage: "sparkles")
+                    }
+                    Button(role: .destructive) { confirmErase = true } label: {
+                        Label("Clear All Data…", systemImage: "trash.fill")
+                    }
+                } header: { Text("Reset") } footer: {
+                    Text("Clear All Data removes every playlist, imported video, favorite, watch position and sign-in from this iPhone, then starts over from the welcome tour.")
+                }
+
                 Section("About") {
                     LabeledContent("Version", value: version)
                     Link(destination: URL(string: "https://kurdsoft.dev/cartv/privacy")!) { Label("Privacy Policy", systemImage: "hand.raised") }
@@ -82,6 +95,18 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .confirmationDialog("Clear all data?", isPresented: $confirmErase, titleVisibility: .visible) {
+                Button("Continue", role: .destructive) { confirmEraseAgain = true }
+            } message: {
+                Text("This deletes \(localVideoSize) of imported videos, all playlists, favorites and history. It can't be undone.")
+            }
+            .alert("Really clear everything?", isPresented: $confirmEraseAgain) {
+                Button("Clear All Data", role: .destructive) {
+                    AppReset.eraseEverything(env: env)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("CarTV will look like it was just installed.") }
         }
     }
 

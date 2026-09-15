@@ -1,70 +1,178 @@
 import SwiftUI
 
+/// First-launch welcome. Five pages: a hero, three features, and a setup page
+/// where MyTV+ can be switched on without a trip to Settings.
 struct OnboardingView: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(AppSettings.self) private var settings
     let finish: () -> Void
+
     @State private var page = 0
+    @State private var enableMyTV = true
+    @State private var appeared = false
 
     private let pages: [Page] = [
-        Page(symbol: "car.side.front.open", title: "Your videos, on the dash", body: "CarTV puts IPTV channels and your own videos on the CarPlay screen — big tiles, big buttons, built for the cabin.", tint: Theme.accent),
-        Page(symbol: "antenna.radiowaves.left.and.right", title: "Add any M3U playlist", body: "Paste a link, scan a QR code or sign in with Xtream. Channels are sorted into News, Sports, Kids, Movies and more automatically.", tint: Color(hue: 0.62, saturation: 0.6, brightness: 0.95)),
-        Page(symbol: "film.stack", title: "Bring your own videos", body: "Import from Files or Photos. Thumbnails, resume points and folders — everything works offline on the road.", tint: Theme.amber),
-        Page(symbol: "play.rectangle.on.rectangle", title: "Plays anywhere", body: "Start on iPhone, keep watching in the car. Hardware decoding for HLS and MP4, VLC for everything else. Video pauses to audio when you drive.", tint: Theme.live),
+        Page(kind: .hero, symbol: "car.side.front.open", title: "Welcome to CarTV",
+             body: "Live TV, movies, series and your own videos — on your iPhone and on the CarPlay screen.",
+             tint: Theme.accent),
+        Page(kind: .feature, symbol: "antenna.radiowaves.left.and.right", title: "Live TV, sorted",
+             body: "Paste any M3U link or Xtream login. Channels land in News, Sports, Kids and more automatically — or turn on the built-in MyTV+ channels.",
+             tint: Color(hue: 0.62, saturation: 0.6, brightness: 0.95)),
+        Page(kind: .feature, symbol: "popcorn.fill", title: "Movies & series that remember",
+             body: "Pick up exactly where you left off, on either screen. Subtitles in English, Arabic and Kurdish.",
+             tint: Theme.live),
+        Page(kind: .feature, symbol: "film.stack.fill", title: "Your videos, offline",
+             body: "Import from Files or Photos. Folders, thumbnails and resume points — no signal needed on the road.",
+             tint: Theme.amber),
+        Page(kind: .setup, symbol: "sparkles", title: "One last thing",
+             body: "Switch on MyTV+ to start with 360+ live channels plus movies and series. You can change this any time in Settings.",
+             tint: Theme.accent),
     ]
+
+    private var isLast: Bool { page == pages.count - 1 }
+    private var current: Page { pages[page] }
 
     var body: some View {
         ZStack {
             Theme.ground.ignoresSafeArea()
-            RadialGradient(colors: [pages[page].tint.opacity(0.35), .clear], center: .top, startRadius: 20, endRadius: 420)
-                .ignoresSafeArea().animation(.easeInOut(duration: 0.5), value: page)
+
+            // Ambient glow follows the page tint.
+            RadialGradient(colors: [current.tint.opacity(0.32), .clear], center: .init(x: 0.5, y: 0.18), startRadius: 10, endRadius: 460)
+                .ignoresSafeArea()
+                .animation(.easeInOut(duration: 0.55), value: page)
 
             VStack(spacing: 0) {
                 TabView(selection: $page) {
                     ForEach(Array(pages.enumerated()), id: \.offset) { i, p in
-                        VStack(spacing: Theme.s6) {
-                            Spacer()
-                            OnboardingArtwork(symbol: p.symbol, tint: p.tint)
-                            VStack(spacing: Theme.s3) {
-                                Text(p.title).font(Theme.Font.largeTitle).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
-                                Text(p.body).font(Theme.Font.body).foregroundStyle(Theme.inkMuted).multilineTextAlignment(.center).frame(maxWidth: 340)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.s6)
-                        .tag(i)
+                        pageView(p, index: i).tag(i)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.snappy(duration: 0.35), value: page)
 
+                // Dots
                 HStack(spacing: 6) {
                     ForEach(0..<pages.count, id: \.self) { i in
-                        Capsule().fill(i == page ? Theme.ink : Theme.inkFaint).frame(width: i == page ? 22 : 7, height: 7)
-                            .animation(.spring(duration: 0.3), value: page)
+                        Capsule().fill(i == page ? Theme.ink : Theme.inkFaint)
+                            .frame(width: i == page ? 22 : 7, height: 7)
                     }
                 }
-                .padding(.bottom, Theme.s6)
+                .animation(.spring(duration: 0.3), value: page)
+                .padding(.bottom, Theme.s5)
 
+                // Primary
                 Button {
-                    if page < pages.count - 1 { withAnimation { page += 1 } } else { finish() }
+                    if isLast { complete() } else { withAnimation(.snappy(duration: 0.35)) { page += 1 } }
                 } label: {
-                    Text(page < pages.count - 1 ? "Next" : "Try it now")
-                        .font(Theme.Font.headline).frame(maxWidth: .infinity).padding(.vertical, Theme.s4)
+                    HStack(spacing: 8) {
+                        Text(isLast ? "Get Started" : (page == 0 ? "Continue" : "Next"))
+                        if !isLast { Image(systemName: "arrow.right").font(.system(size: 15, weight: .bold)) }
+                    }
+                    .font(Theme.Font.headline).frame(maxWidth: .infinity).frame(height: 52)
                 }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).tint(Theme.accent).foregroundStyle(.black)
+                .buttonStyle(.glassProminent).tint(Theme.accent).foregroundStyle(.black)
                 .padding(.horizontal, Theme.s6)
+                .sensoryFeedback(.selection, trigger: page)
 
-                Button("Skip") { finish() }.font(Theme.Font.callout).foregroundStyle(Theme.inkMuted).padding(.top, Theme.s3).padding(.bottom, Theme.s4)
-                    .opacity(page < pages.count - 1 ? 1 : 0)
+                // Secondary
+                Button(isLast ? " " : "Skip") { if !isLast { complete() } }
+                    .font(Theme.Font.callout).foregroundStyle(Theme.inkMuted)
+                    .padding(.top, Theme.s3).padding(.bottom, Theme.s4)
+                    .opacity(isLast ? 0 : 1)
+                    .disabled(isLast)
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(0.1)) { appeared = true } }
+        .interactiveDismissDisabled()
     }
 
-    struct Page { let symbol: String; let title: LocalizedStringResource; let body: LocalizedStringResource; let tint: Color }
+    // MARK: Pages
+
+    @ViewBuilder private func pageView(_ p: Page, index i: Int) -> some View {
+        VStack(spacing: Theme.s6) {
+            Spacer(minLength: 0)
+            switch p.kind {
+            case .hero:    HeroArtwork(tint: p.tint, appeared: appeared)
+            case .feature: FeatureArtwork(symbol: p.symbol, tint: p.tint, active: page == i)
+            case .setup:   SetupArtwork(tint: p.tint, active: page == i)
+            }
+            VStack(spacing: Theme.s3) {
+                Text(p.title).font(Theme.Font.largeTitle).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
+                Text(p.body).font(Theme.Font.body).foregroundStyle(Theme.inkMuted).multilineTextAlignment(.center)
+                    .frame(maxWidth: 340).fixedSize(horizontal: false, vertical: true)
+            }
+            if p.kind == .setup { setupCard.padding(.top, Theme.s2) }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.s6)
+    }
+
+    private var setupCard: some View {
+        Toggle(isOn: $enableMyTV) {
+            HStack(spacing: Theme.s3) {
+                Image(systemName: "tv.badge.wifi").font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MyTV+ channels, movies & series").font(Theme.Font.headline).foregroundStyle(Theme.ink)
+                    Text("Kurdish, Arabic and international").font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                }
+            }
+        }
+        .tint(Theme.accent)
+        .padding(Theme.s4)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous).strokeBorder(Theme.hairline))
+        .frame(maxWidth: 380)
+    }
+
+    private func complete() {
+        if enableMyTV, isLast, !settings.mytvEnabled {
+            settings.mytvEnabled = true
+            MyTVService.install(env: env)
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        finish()
+    }
+
+    struct Page {
+        enum Kind { case hero, feature, setup }
+        let kind: Kind
+        let symbol: String
+        let title: LocalizedStringResource
+        let body: LocalizedStringResource
+        let tint: Color
+    }
 }
 
-struct OnboardingArtwork: View {
+// MARK: - Artwork
+
+/// App icon-style tile with a car glyph, springs in on first appear.
+private struct HeroArtwork: View {
+    let tint: Color
+    let appeared: Bool
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 48, style: .continuous)
+                .fill(LinearGradient(colors: [tint, tint.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 196, height: 196)
+                .shadow(color: tint.opacity(0.5), radius: 46, y: 22)
+            Image(systemName: "car.side.front.open")
+                .font(.system(size: 84, weight: .medium))
+                .foregroundStyle(.black.opacity(0.85))
+                .symbolRenderingMode(.hierarchical)
+        }
+        .scaleEffect(appeared ? 1 : 0.6)
+        .opacity(appeared ? 1 : 0)
+        .rotationEffect(.degrees(appeared ? 0 : -8))
+    }
+}
+
+/// Feature tile; the symbol gets a subtle bounce when its page becomes active.
+private struct FeatureArtwork: View {
     let symbol: String
     let tint: Color
+    let active: Bool
+    @State private var bounce = 0
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 44, style: .continuous)
@@ -75,6 +183,28 @@ struct OnboardingArtwork: View {
                 .font(.system(size: 76, weight: .medium))
                 .foregroundStyle(.white)
                 .symbolRenderingMode(.hierarchical)
+                .symbolEffect(.bounce, value: bounce)
+        }
+        .onChange(of: active) { _, on in if on { bounce += 1 } }
+    }
+}
+
+/// Setup page: a small "phone → car" diagram so the last step feels like a payoff.
+private struct SetupArtwork: View {
+    let tint: Color
+    let active: Bool
+    @State private var pulse = false
+    var body: some View {
+        HStack(spacing: Theme.s4) {
+            Image(systemName: "iphone").font(.system(size: 54, weight: .light)).foregroundStyle(Theme.ink)
+            Image(systemName: "arrow.right").font(.system(size: 22, weight: .bold)).foregroundStyle(tint)
+                .opacity(pulse ? 1 : 0.35).scaleEffect(pulse ? 1.1 : 0.9)
+            Image(systemName: "car.fill").font(.system(size: 54, weight: .light)).foregroundStyle(tint)
+        }
+        .frame(height: 180)
+        .onChange(of: active, initial: true) { _, on in
+            guard on else { pulse = false; return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 }

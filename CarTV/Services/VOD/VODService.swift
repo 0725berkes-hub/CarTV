@@ -173,6 +173,17 @@ final class VODService {
             .prefix(limit).map { $0 }
     }
 
+    /// Forget everything in memory (disk caches are removed by AppReset).
+    func reset() {
+        loadTask?.cancel(); loadTask = nil
+        movies = []; series = []
+        movieShelves = []; seriesShelves = []
+        seasonCache = [:]; episodeCache = [:]
+        played = [:]; playedLoaded = false
+        lastRefreshed = nil
+        phase = .idle
+    }
+
     // MARK: Lookup
 
     func movie(id: String) -> VODMovie? { movies.first { $0.id == id } }
