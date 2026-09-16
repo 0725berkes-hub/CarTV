@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Downloads the official MobileVLCKit xcframework from VideoLAN into Packages/VLCKit/Vendor.
 # The binary is ~1.1 GB unpacked and is git-ignored; run this once after cloning.
 set -euo pipefail
