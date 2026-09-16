@@ -345,10 +345,9 @@ nonisolated enum MyTVAPI {
     nonisolated static let userAgent = "And$MyTV"
     /// Cloudflare Worker that slims and gzips the catalogue (see coding/mytv-worker).
     nonisolated static let edgeCatalogue = URL(string: "https://mytv.hankus1.workers.dev/vod/catalogue")!
-    nonisolated private static let base: [String: String] = [
-        "appVersion": "3.15.1", "deviceType": "android",
-        "uuid": "58182e46-8a20-443e-9e43-9b63bc44589c", "userId": "6414575", "country": "IQ",
-    ]
+    nonisolated private static var base: [String: String] {
+        ["appVersion": "3.15.1", "deviceType": "android", "uuid": MyTVService.deviceUUID, "country": "IQ"]
+    }
 
     /// One session for catalogue pulls: generous resource timeout for the 22 MB movie
     /// list, gzip accepted, no cookies, and it fails fast when there's no network

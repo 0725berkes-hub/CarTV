@@ -14,26 +14,12 @@ enum MyTVService {
     nonisolated static let playlistName = "CarFlix+"
 
     nonisolated private static let api = URL(string: "https://androidapi.appmytv.com/android/v2/channels/getChannelsDetail_local.php")!
-    /// Relay that fetches the catalogue *and* proxies every stream from one fixed IP.
-    /// Used when the carrier blocks the MyTV+ API (Korek does) — direct tokens are
-    /// IP-bound, so a relay must serve both the list and the video.
-    nonisolated private static let relayM3U = URL(string: "https://mytv-web.onrender.com/playlist.m3u")!
     /// Generic HTTPS relay (Cloudflare Worker) for small blocked assets like artwork.
     nonisolated private static let assetRelay = "https://cartv-relay.hankus1.workers.dev/p/"
     nonisolated private static let blockedHosts: Set<String> = ["media.appmytv.com", "androidapi.appmytv.com", "api.appmytv.com", "appmytv.com"]
 
-    /// The relay sleeps when idle (free tier). Poke it when the app comes forward or
-    /// CarPlay connects so it's warm by the time a channel is tapped. Fire-and-forget.
-    @MainActor private static var lastWake: Date = .distantPast
-    nonisolated static func warmRelay() {
-        Task { @MainActor in
-            guard Date().timeIntervalSince(lastWake) > 120 else { return }
-            lastWake = .now
-            var req = URLRequest(url: relayM3U.deletingLastPathComponent(), timeoutInterval: 30)
-            req.httpMethod = "HEAD"
-            _ = try? await URLSession.shared.data(for: req)
-        }
-    }
+    /// Kept for call sites; the catalogue is fetched directly now (no relay to warm).
+    nonisolated static func warmRelay() {}
 
     /// Relay URL for a blocked MyTV+ asset, or nil when the host doesn't need one.
     nonisolated static func relayURL(for url: URL) -> URL? {
@@ -44,7 +30,16 @@ enum MyTVService {
     nonisolated private static let userAgent = "And$MyTV"
     nonisolated private static let key = Array("9z_z%C*F-JaNdWgU".utf8)
     nonisolated private static let iv = Array("t2w!W%u&F(J@McWf".utf8)
-    nonisolated private static let body = Data(#"{"appVersion":"3.15.1","deviceType":"android","uuid":"58182e46-8a20-443e-9e43-9b63bc44589c","userId":"6414575","country":"IQ"}"#.utf8)
+    /// Anonymous device identity — the API only needs *a* UUID, not an account.
+    /// Generated once per install and kept in defaults.
+    nonisolated static var deviceUUID: String {
+        let k = "mytv.deviceUUID"
+        if let v = UserDefaults.standard.string(forKey: k) { return v }
+        let v = UUID().uuidString.lowercased(); UserDefaults.standard.set(v, forKey: k); return v
+    }
+    nonisolated private static var body: Data {
+        Data(#"{"appVersion":"3.15.1","deviceType":"android","uuid":"\#(deviceUUID)","country":"IQ"}"#.utf8)
+    }
 
     // MARK: Install / remove
 
@@ -115,37 +110,11 @@ enum MyTVService {
 
     // MARK: Fetch + decrypt (off main actor)
 
-    /// Direct API first (best quality, IP-bound tokens); if the network blocks it,
-    /// fall back to the relay playlist so channels still work on Korek.
+    /// Fetches the catalogue directly. Stream tokens are bound to this device's IP,
+    /// so there is no third-party relay: the list must come from the same network
+    /// that will play the video.
     nonisolated static func fetchM3U() async throws -> String {
-        // Race both: on an open network the direct API wins in ~1s; on Korek it hangs
-        // until timeout, so the relay (already warming in parallel) wins instead.
-        return try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask { try await fetchDirectM3U() }
-            group.addTask {
-                try await Task.sleep(for: .milliseconds(1500))   // give direct a head start
-                return try await fetchRelayM3U()
-            }
-            var lastError: Error?
-            while let result = await group.nextResult() {
-                switch result {
-                case .success(let m3u): group.cancelAll(); return m3u
-                case .failure(let e): lastError = e
-                }
-            }
-            throw lastError ?? URLError(.cannotLoadFromNetwork)
-        }
-    }
-
-    nonisolated private static func fetchRelayM3U() async throws -> String {
-        var req = URLRequest(url: relayM3U, timeoutInterval: 45)
-        req.setValue("CarTV", forHTTPHeaderField: "User-Agent")
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-        let text = String(decoding: data, as: UTF8.self)
-        guard text.contains("#EXTINF") else { throw URLError(.cannotParseResponse) }
-        Log.playlist.notice("MyTV+ catalogue via relay")
-        return text
+        try await fetchDirectM3U()
     }
 
     /// Downloads the encrypted catalogue for *this device's IP*, decrypts it, renders M3U.

@@ -14,7 +14,6 @@ struct OnboardingView: View {
     let finish: () -> Void
 
     @State private var page = 0
-    @State private var enableMyTV = true
     @State private var wantsYouTube = true
     @State private var heroIn = false
 
@@ -24,24 +23,24 @@ struct OnboardingView: View {
               body: "Live channels, YouTube, movies, series and your own videos — on your iPhone and on the CarPlay screen.",
               proof: ["Free", "No account needed", "Works offline"]),
         .init(kind: .channels, tint: Color(hue: 0.60, saturation: 0.65, brightness: 0.98),
-              eyebrow: "LIVE TV", title: "360+ channels,\nready now",
-              body: "News, sports, kids, music and movies in Kurdish, Arabic and English — sorted for you. Or add any M3U or Xtream playlist.",
-              proof: ["Built-in CarFlix+", "One tap to turn on"]),
+              eyebrow: "LIVE TV", title: "Your channels,\non the dash",
+              body: "Add any M3U or Xtream playlist and your channels are sorted by genre, with live previews and favorites — on the phone and in the car.",
+              proof: ["M3U", "Xtream", "Genres"]),
         .init(kind: .youtube, tint: Color(red: 1.0, green: 0.0, blue: 0.0),
               eyebrow: "YOUTUBE", title: "YouTube on\nthe dash",
               body: "Your subscriptions, Watch Later and playlists, playable in the car. Sign in with Google to see your feed, or just browse.",
               proof: ["Subscriptions", "Watch Later", "Quality picker"]),
         .init(kind: .movies, tint: Color(hue: 0.83, saturation: 0.55, brightness: 0.98),
               eyebrow: "MOVIES & SERIES", title: "Picks up where\nyou stopped",
-              body: "12,000+ movies and 8,000+ series. Resume on either screen, exactly where you left it. Subtitles in English, Arabic and Kurdish.",
+              body: "Movies and series from your playlists, with Continue Watching. Resume on either screen, exactly where you left it, with subtitles.",
               proof: ["Continue Watching", "Auto-resume", "CC"]),
         .init(kind: .videos, tint: Theme.amber,
               eyebrow: "YOUR VIDEOS", title: "No signal?\nNo problem",
               body: "Import from Files or Photos. Folders, thumbnails and resume points work offline — long drives, kids in the back, sorted.",
               proof: ["Files", "Photos", "Offline"]),
         .init(kind: .setup, tint: Theme.accent,
-              eyebrow: "ONE LAST THING", title: "Set up in\none tap",
-              body: "We'll switch on the good stuff. Change any of it later in Settings.",
+              eyebrow: "ONE LAST THING", title: "Ready when\nyou are",
+              body: "Sign in to YouTube now, or skip it. Add playlists any time from Home. Everything can be changed later in Settings.",
               proof: []),
     ]
 
@@ -89,8 +88,8 @@ struct OnboardingView: View {
                     .animation(.easeInOut(duration: 0.4), value: page)
                     .sensoryFeedback(.selection, trigger: page)
 
-                    Button(isLast ? "Start without CarFlix+" : " ") {
-                        if isLast { enableMyTV = false; wantsYouTube = false; complete() }
+                    Button(isLast ? "Start without signing in" : " ") {
+                        if isLast { wantsYouTube = false; complete() }
                     }
                     .font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.55))
                     .opacity(isLast ? 1 : 0).disabled(!isLast)
@@ -107,7 +106,7 @@ struct OnboardingView: View {
     private var primaryTitle: LocalizedStringResource {
         switch page {
         case 0: "Show me"
-        case pages.count - 1: enableMyTV ? "Turn on & start watching" : "Start watching"
+        case pages.count - 1: "Start watching"
         default: "Continue"
         }
     }
@@ -126,7 +125,7 @@ struct OnboardingView: View {
                 case .youtube:  DisplayFrame(tint: p.tint, active: active) { YouTubeMock(tint: p.tint, active: active) }
                 case .movies:   DisplayFrame(tint: p.tint, active: active) { MoviesMock(tint: p.tint, active: active) }
                 case .videos:   DisplayFrame(tint: p.tint, active: active) { VideosMock(tint: p.tint, active: active) }
-                case .setup:    SetupCard(enableMyTV: $enableMyTV, wantsYouTube: $wantsYouTube, tint: p.tint)
+                case .setup:    SetupCard(wantsYouTube: $wantsYouTube, tint: p.tint)
                 }
             }
             .frame(height: 300)
@@ -157,10 +156,6 @@ struct OnboardingView: View {
     }
 
     private func complete() {
-        if enableMyTV, !settings.mytvEnabled {
-            settings.mytvEnabled = true
-            MyTVService.install(env: env)
-        }
         if wantsYouTube, !env.youtube.auth.isSignedIn { env.youtube.pendingSignInPrompt = true }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         finish()
@@ -443,7 +438,6 @@ private struct VideosMock: View {
 // MARK: - Setup
 
 private struct SetupCard: View {
-    @Binding var enableMyTV: Bool
     @Binding var wantsYouTube: Bool
     let tint: Color
     var body: some View {
@@ -457,9 +451,6 @@ private struct SetupCard: View {
             .padding(.top, Theme.s5).padding(.bottom, Theme.s4)
 
             VStack(spacing: 1) {
-                SetupSwitch(isOn: $enableMyTV, symbol: "tv.badge.wifi", tint: Theme.accent,
-                            title: "CarFlix+ channels, movies & series", subtitle: "360+ live · 12K movies · 8K series")
-                Divider().overlay(.white.opacity(0.08)).padding(.horizontal, Theme.s4)
                 SetupSwitch(isOn: $wantsYouTube, brandImage: "YouTubeMark", tint: Color(red: 1.0, green: 0.0, blue: 0.0),
                             title: "Sign in to YouTube", subtitle: "Subscriptions & Watch Later — optional")
             }

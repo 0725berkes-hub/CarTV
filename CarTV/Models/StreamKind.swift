@@ -27,7 +27,6 @@ nonisolated enum StreamKind: Sendable, Equatable {
         }
 
         // The MyTV+ relay serves HLS at /live/<id> with no extension.
-        if url.host?.hasSuffix("mytv-web.onrender.com") == true { return .hls }
         // Xtream-style paths: /live/<user>/<pass>/<id>.ts  or  /movie/… /series/…
         let path = url.path.lowercased()
         if path.contains("/live/") && ext.isEmpty { return .mpegTS }

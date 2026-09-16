@@ -47,7 +47,7 @@ struct SettingsView: View {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("CarFlix+ channels")
-                                Text(mytvStatus).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                                Text(settings.mytvEnabled ? mytvStatus : String(localized: "Kurdish, Arabic & English TV, movies and series")).font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
                             }
                         } icon: { Image(systemName: "tv.badge.wifi").foregroundStyle(Theme.accent) }
                     }
@@ -117,20 +117,6 @@ struct SettingsView: View {
                     LabeledContent("Version", value: version)
                     Link(destination: URL(string: "https://kurdsoft.dev/cartv/privacy")!) { Label("Privacy Policy", systemImage: "hand.raised") }
                     Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) { Label("Terms of Use (EULA)", systemImage: "doc.text") }
-                }
-
-                Section {
-                    HStack(spacing: 4) {
-                        Spacer()
-                        Text("Made with ❤️ by").foregroundStyle(Theme.inkMuted)
-                        Link(destination: URL(string: "https://instagram.com/sahnd.hamzani")!) {
-                            Text("@sahnd.hamzani").fontWeight(.semibold).foregroundStyle(Theme.accent)
-                        }
-                        Spacer()
-                    }
-                    .font(Theme.Font.caption)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 12, trailing: 0))
                 }
             }
             .scrollContentBackground(.hidden)
