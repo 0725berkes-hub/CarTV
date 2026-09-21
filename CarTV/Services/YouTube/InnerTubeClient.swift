@@ -48,6 +48,11 @@ nonisolated final class InnerTubeClient: Sendable {
     private let session: URLSession
     private let base = URL(string: "https://www.youtube.com/youtubei/v1/")!
 
+    /// Discard visitor state that may have outlived a long app suspension.
+    func resetTransientState() {
+        visitorLock.withLock { cachedVisitorData = nil }
+    }
+
     private init() {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 20

@@ -18,6 +18,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         Log.carplay.info("CarPlay connected WITH window \(window.bounds.debugDescription, privacy: .public)")
         MyTVService.warmRelay()
         Task { await MyTVService.refreshForCurrentNetwork(env: .shared) }
+        AppEnvironment.shared.youtube.refreshTransientState()
         AppEnvironment.shared.carPlay.connect(
             interfaceController: interfaceController,
             window: window,
@@ -41,6 +42,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         didConnect interfaceController: CPInterfaceController
     ) {
         Log.carplay.info("CarPlay connected WITHOUT window (templates only)")
+        AppEnvironment.shared.youtube.refreshTransientState()
         AppEnvironment.shared.carPlay.connect(
             interfaceController: interfaceController,
             window: nil,

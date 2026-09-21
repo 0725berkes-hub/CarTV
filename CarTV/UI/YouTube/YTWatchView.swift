@@ -59,7 +59,6 @@ struct YTWatchView: View {
             if let w = try? await env.youtube.watch(video.id) {
                 info = w; liked = w.isLiked ?? false; subscribed = w.channel?.isSubscribed ?? false
                 commentsCont = w.commentsContinuation
-                // Up Next = related videos, as lazy stubs that resolve when reached.
                 w.related.forEach { env.youtube.remember($0) }
                 if let cur = playback.current, cur.ref.id == YouTubeService.uuid(for: video.id) {
                     playback.setQueue([cur] + w.related.compactMap { env.youtube.cachedStub($0.id) })

@@ -26,6 +26,8 @@ final class PlaybackController {
     var repeatMode: RepeatMode = .off { didSet { UserDefaults.standard.set(repeatMode.rawValue, forKey: "playback.repeat") } }
     /// History of shuffled picks so "previous" walks back through what actually played.
     private var shuffleTrail: [UUID] = []
+    /// Items already visited in the current shuffle cycle.
+    private var shufflePlayedIDs: Set<UUID> = []
     private(set) var snapshot = PlayerSnapshot()
     private(set) var engineKind: PlayerEngineKind = .avPlayer
     private(set) var gravity: VideoGravity = .fit
@@ -179,6 +181,7 @@ final class PlaybackController {
         attemptedVLC = false
         attemptedYouTubeRefresh = false
         attemptedMyTVRefresh = false
+        attemptedMyTVRelay = false
         lastSeekTarget = 0
         isFallingBack = false
         lastSavedPosition = 0
@@ -196,7 +199,7 @@ final class PlaybackController {
 
         // 2. Next turn: engine + I/O, after the presentation has been committed.
         let startAt = resume && !item.isLive ? progress.resumePosition(for: item.ref) : nil
-        let kind: PlayerEngineKind = (item.streamKind.prefersAVPlayer && !settings.softwareDecoding) ? .avPlayer : .vlc
+        let kind: PlayerEngineKind = (item.streamKind == .hls && !settings.softwareDecoding) || (!item.isLive && item.streamKind.prefersAVPlayer) ? .avPlayer : .vlc
         Task { @MainActor [weak self] in
             guard let self, self.current?.id == item.id else { return }
             var item = item
@@ -216,6 +219,17 @@ final class PlaybackController {
                     self.snapshot = PlayerSnapshot(state: .failed(.unknown(error.localizedDescription)))
                     return
                 }
+            }
+            if item.ref.kind == .channel,
+               item.url.host == MyTVService.relayBase.host,
+               let channel = AppEnvironment.shared.library.channel(id: item.ref.id),
+               channel.playlist?.sourceURL == MyTVService.sourceURL {
+                await MyTVService.refreshForCurrentNetwork(env: AppEnvironment.shared, force: true)
+                guard self.current?.id == item.id,
+                      let fresh = AppEnvironment.shared.library.item(for: item.ref) else { return }
+                item = fresh
+                self.current = fresh
+                if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = fresh }
             }
             self.start(on: kind, item: item, startAt: startAt)
             _ = await AudioSessionController.activate() as Bool
@@ -280,7 +294,7 @@ final class PlaybackController {
                 Log.player.error("Audio session won't activate; cannot resume")
                 return
             }
-            let kind: PlayerEngineKind = (item.streamKind.prefersAVPlayer && !settings.softwareDecoding) ? .avPlayer : .vlc
+            let kind: PlayerEngineKind = (item.streamKind == .hls && !settings.softwareDecoding) || (!item.isLive && item.streamKind.prefersAVPlayer) ? .avPlayer : .vlc
             engine.stop()
             attemptedVLC = false
             start(on: kind, item: item, startAt: at)
@@ -336,6 +350,8 @@ final class PlaybackController {
         engine.stop()
         current = nil
         queue = []
+        shuffleTrail.removeAll()
+        shufflePlayedIDs.removeAll()
         snapshot = PlayerSnapshot()
         isPhonePlayerPresented = false
         subtitles.reset(for: nil)
@@ -353,6 +369,7 @@ final class PlaybackController {
     private var lastSeekTarget: TimeInterval = 0
     private var attemptedYouTubeRefresh = false
     private var attemptedMyTVRefresh = false
+    private var attemptedMyTVRelay = false
 
     private func refreshYouTubeStream(item: PlayableItem, resumeAt: TimeInterval) {
         guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
@@ -382,9 +399,7 @@ final class PlaybackController {
 
     private var origin: PlaybackOrigin { isPhonePlayerPresented ? .phone : .car }
 
-    /// YouTube: when the current video is the last thing in the queue, fetch
-    /// YouTube's own "up next" for it so Next (phone, car, lock screen, Finished
-    /// card) always has somewhere to go — like a normal video in a playlist.
+    /// Fill a standalone YouTube item with the same related-video list shown by YouTube.
     private func ensureYouTubeUpNext(after item: PlayableItem) {
         guard item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) else { return }
         guard let i = queue.firstIndex(where: { $0.id == item.id }), i >= queue.count - 1 else { return }
@@ -408,6 +423,7 @@ final class PlaybackController {
         if !q.contains(where: { $0.id == cur.id }) { q.insert(cur, at: 0) }
         queue = q
         shuffleTrail.removeAll()
+        shufflePlayedIDs.removeAll()
     }
 
     /// Next item honouring shuffle/repeat; nil when the queue is exhausted.
@@ -420,6 +436,10 @@ final class PlaybackController {
         if shuffle, !isFeed {
             let others = queue.filter { $0.id != cur.id }
             guard !others.isEmpty else { return repeatMode == .all || !auto ? cur : nil }
+            shufflePlayedIDs.insert(cur.id)
+            let unseen = others.filter { !shufflePlayedIDs.contains($0.id) }
+            if let next = unseen.randomElement() { return next }
+            shufflePlayedIDs = [cur.id]
             return others.randomElement()
         }
         guard let i = queue.firstIndex(where: { $0.id == cur.id }) else { return nil }
@@ -478,6 +498,8 @@ final class PlaybackController {
         let source = pool ?? queue
         guard let item = source.filter({ $0.id != current?.id }).randomElement() ?? source.first else { return }
         shuffle = true
+        shuffleTrail.removeAll()
+        shufflePlayedIDs.removeAll()
         play(item, queue: pool, origin: origin, resume: false)
     }
 
@@ -486,7 +508,11 @@ final class PlaybackController {
         else if let cur = current { play(cur, origin: origin, resume: false) }
     }
 
-    func toggleShuffle() { shuffle.toggle(); shuffleTrail.removeAll() }
+    func toggleShuffle() {
+        shuffle.toggle()
+        shuffleTrail.removeAll()
+        shufflePlayedIDs.removeAll()
+    }
     func cycleRepeat() { repeatMode = repeatMode.next }
 
     var hasNext: Bool { queue.count > 1 || repeatMode != .off }
@@ -576,6 +602,16 @@ final class PlaybackController {
             // list for the network we're on now and retry that channel with its new URL.
             if let item = current, item.ref.kind == .channel, !attemptedMyTVRefresh,
                let ch = AppEnvironment.shared.library.channel(id: item.ref.id), ch.playlist?.sourceURL == MyTVService.sourceURL {
+                if item.streamKind == .hls, !attemptedMyTVRelay, let remoteID = ch.tvgID, !remoteID.isEmpty {
+                    attemptedMyTVRelay = true
+                    var relayItem = item
+                    relayItem.url = MyTVService.relayBase.appending(path: "live/\(remoteID)")
+                    current = relayItem
+                    if let i = queue.firstIndex(where: { $0.id == item.id }) { queue[i] = relayItem }
+                    Log.player.notice("MyTV direct HLS timed out; retrying through live relay for \(item.title, privacy: .public)")
+                    start(on: .avPlayer, item: relayItem, startAt: nil)
+                    return
+                }
                 attemptedMyTVRefresh = true
                 isFallingBack = true
                 Log.player.notice("CarFlix+ channel refused; refreshing links and retrying \(item.title, privacy: .public)")
@@ -591,7 +627,8 @@ final class PlaybackController {
                 return
             }
             // AVPlayer couldn't handle it → try VLC once, transparently.
-            if engineKind == .avPlayer, !attemptedVLC, let item = current, failure != .authRequired {
+                if engineKind == .avPlayer, !attemptedVLC, let item = current,
+                    failure != .authRequired, !(item.isLive && item.streamKind == .hls) {
                 attemptedVLC = true
                 isFallingBack = true
                 Log.player.notice("Falling back to VLC for \(item.title, privacy: .public): \(failure.message, privacy: .public)")
@@ -615,8 +652,10 @@ final class PlaybackController {
             }
             persistProgress(force: true)
             guard current?.isLive == false else { return }
-            // Repeat/shuffle are explicit intents → continue automatically.
-            if repeatMode != .off || shuffle, let item = upcoming(auto: true) {
+            // YouTube follows its own Up Next list automatically. Other media only
+            // advances when repeat or shuffle is explicitly enabled.
+            let shouldAdvanceYouTube = current?.ref.kind == .youtube && upcoming(auto: false) != nil
+            if (repeatMode != .off || shuffle || shouldAdvanceYouTube), let item = upcoming(auto: true) {
                 if item.id == current?.id { replay() } else { play(item, origin: origin, resume: false) }
             }
             // Otherwise stay on .ended; the players show Replay / Next / Random.

@@ -50,7 +50,12 @@ nonisolated final class ImageLoader: @unchecked Sendable {
             if url.isFileURL {
                 data = try? Data(contentsOf: url)
             } else {
-                var fetched = try? await session.data(from: url).0
+                var request = URLRequest(url: url)
+                if let host = url.host, host.contains("ytimg.com") || host.contains("ggpht.com") || host.contains("googleusercontent.com") {
+                    request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+                    request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+                }
+                var fetched = try? await session.data(for: request).0
                 // Hosts some carriers block (MyTV+ artwork on Korek) → retry via the relay.
                 if fetched == nil, let relay = MyTVService.relayURL(for: url) {
                     fetched = try? await session.data(from: relay).0

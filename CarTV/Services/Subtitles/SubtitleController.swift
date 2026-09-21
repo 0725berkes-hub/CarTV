@@ -8,6 +8,14 @@ struct SubtitleCue: Sendable, Hashable, Identifiable {
     var text: String
 }
 
+nonisolated struct SubtitleTrack: Sendable, Hashable, Identifiable {
+    let name: String
+    let languageCode: String
+    let url: URL
+
+    var id: String { "\(languageCode):\(url.absoluteString)" }
+}
+
 /// Renders external (SRT/VTT) subtitles as an overlay and optionally translates them
 /// on-device. Engine-embedded tracks are drawn by the engine itself.
 @Observable
@@ -49,6 +57,16 @@ final class SubtitleController {
            let url = item.subtitleLinks.preferred(for: AppEnvironment.shared.settings.subtitleLanguage) {
             loadExternal(url, headers: item.headers)
         }
+        if let item, let track = preferredTrack(in: item.subtitleTracks) {
+            loadExternal(track.url, headers: item.headers)
+        }
+    }
+
+    private func preferredTrack(in tracks: [SubtitleTrack]) -> SubtitleTrack? {
+        guard !tracks.isEmpty else { return nil }
+        let preferred = AppEnvironment.shared.settings.subtitleLanguage
+        if let preferred, let track = tracks.first(where: { $0.languageCode == preferred || $0.languageCode.hasPrefix(preferred + "-") }) { return track }
+        return tracks.first(where: { $0.languageCode == "en" || $0.languageCode.hasPrefix("en-") }) ?? tracks.first
     }
 
     func loadExternal(_ url: URL, headers: [String: String] = [:]) {

@@ -107,6 +107,7 @@ struct CarRootView: View {
                             if case .ytVideo(let cur)? = p.last, cur.id == vid { /* already there */ } else { p.append(.ytVideo(v)) }
                             paths[.youtube] = p
                         }
+                        playback.stop()
                         withAnimation(.snappy(duration: 0.3)) { showPlayer = false }
                     }
                         .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),

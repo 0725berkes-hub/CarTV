@@ -249,16 +249,19 @@ struct CarYTWatchView: View {
             }
             .padding(.horizontal, m.gutter).padding(.vertical, Theme.s3)
         }
-        .task(id: video.id) { info = try? await env.youtube.watch(video.id) }
+        .task(id: video.id) {
+            info = try? await env.youtube.watch(video.id)
+            guard let info, let cur = playback.current, cur.ref.id == YouTubeService.uuid(for: video.id) else { return }
+            info.related.forEach { env.youtube.remember($0) }
+            playback.setQueue([cur] + info.related.compactMap { env.youtube.cachedStub($0.id) })
+        }
     }
 
     private func play() {
         env.youtube.remember(video)
-        let rest = (info?.related ?? [])
-        rest.forEach { env.youtube.remember($0) }
         Task {
             guard let r = try? await env.youtube.resolve(video) else { return }
-            playback.play(r.item, queue: [r.item] + rest.compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
+            playback.play(r.item, queue: [r.item], origin: .car)
         }
     }
 }

@@ -18,7 +18,7 @@ final class YouTubeService {
     private let api = InnerTubeClient.shared
 
     // Resolved stream cache: videoID → (playable URL, expiry)
-    private var streamCache: [String: (url: URL, expires: Date, variants: [(Int, String)], tracking: (URL?, URL?))] = [:]
+    private var streamCache: [String: (url: URL, expires: Date, variants: [(Int, String)], captions: [SubtitleTrack], tracking: (URL?, URL?))] = [:]
     private var pageCache: [String: (page: YTPage, at: Date)] = [:]
     private let pageTTL: TimeInterval = 600
 
@@ -170,6 +170,17 @@ final class YouTubeService {
     /// Drop cached pages so the next fetch hits the network (Refresh button).
     func invalidateFeeds() { pageCache.removeAll() }
 
+    /// Drop network-derived state after a long suspension or CarPlay reconnect.
+    /// Sign-in, remembered video metadata, and user preferences remain intact.
+    func refreshTransientState() {
+        streamCache.removeAll()
+        pageCache.removeAll()
+        HLSBuilder.purge(olderThan: 0)
+        api.resetTransientState()
+        Task { await YTChallengeSolver.shared.reset() }
+        Log.network.info("YouTube transient session state refreshed")
+    }
+
     /// More items for a single shelf (TV layout paginates per shelf).
     func more(shelf continuation: String) async throws -> YTShelf? {
         let json = try await api.browse("", continuation: continuation, accessToken: await auth.token())
@@ -213,14 +224,14 @@ final class YouTubeService {
     struct Resolved: Sendable {
         let item: PlayableItem
         let variants: [(height: Int, label: String)]
-        let captions: [(name: String, lang: String, url: URL)]
+        let captions: [SubtitleTrack]
     }
 
     /// Resolves a video into a PlayableItem: HLS (native) → generated HLS → progressive MP4.
     func resolve(_ video: YTVideo, fresh: Bool = false) async throws -> Resolved {
         if fresh { streamCache[video.id] = nil }
         if let c = streamCache[video.id], c.expires > Date() {
-            let r = Resolved(item: item(for: video, url: c.url), variants: c.variants.map { ($0.0, $0.1) }, captions: [])
+            let r = Resolved(item: item(for: video, url: c.url, subtitleTracks: c.captions), variants: c.variants.map { ($0.0, $0.1) }, captions: c.captions)
             AppEnvironment.shared.playback.pendingQualityVariants = r.variants
             history.begin(videoID: video.id, playbackURL: c.tracking.0, watchtimeURL: c.tracking.1)
             return r
@@ -256,7 +267,8 @@ final class YouTubeService {
         } else {
             throw YTError.unavailable(resp.playabilityReason ?? String(localized: "No playable streams"))
         }
-        streamCache[video.id] = (url, resp.expiresAt, variants, (resp.playbackURL, resp.watchtimeURL))
+        let captions = resp.captionTracks.map { SubtitleTrack(name: $0.name, languageCode: $0.lang, url: $0.url) }
+        streamCache[video.id] = (url, resp.expiresAt, variants, captions, (resp.playbackURL, resp.watchtimeURL))
         AppEnvironment.shared.playback.pendingQualityVariants = variants.map { ($0.0, $0.1) }
         history.begin(videoID: video.id, playbackURL: resp.playbackURL, watchtimeURL: resp.watchtimeURL)
         var enriched = video
@@ -264,11 +276,11 @@ final class YouTubeService {
         if enriched.channelName == nil { enriched.channelName = resp.author }
         if enriched.durationSeconds == nil, resp.lengthSeconds > 0 { enriched.durationSeconds = resp.lengthSeconds }
         enriched.isLive = resp.isLive
-        return Resolved(item: item(for: enriched, url: url), variants: variants.map { ($0.0, $0.1) }, captions: resp.captionTracks)
+        return Resolved(item: item(for: enriched, url: url, subtitleTracks: captions), variants: variants.map { ($0.0, $0.1) }, captions: captions)
     }
 
-    private func item(for v: YTVideo, url: URL) -> PlayableItem {
-        PlayableItem(
+    private func item(for v: YTVideo, url: URL, subtitleTracks: [SubtitleTrack] = []) -> PlayableItem {
+        var item = PlayableItem(
             ref: PlayableRef(id: Self.uuid(for: v.id), kind: .youtube),
             title: v.title,
             subtitle: v.channelName,
@@ -280,6 +292,8 @@ final class YouTubeService {
             duration: TimeInterval(v.durationSeconds ?? 0),
             streamKind: url.isFileURL ? .hls : .hls
         )
+        item.subtitleTracks = subtitleTracks
+        return item
     }
 
     /// Stable UUID derived from the 11-char video ID so favorites/progress round-trip.

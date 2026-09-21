@@ -14,8 +14,9 @@ nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
     /// Known duration for VOD; 0 for live/unknown.
     let duration: TimeInterval
     let streamKind: StreamKind
-    /// External subtitle tracks (MyTV+ movies/episodes). Empty for channels and local files.
+    /// External subtitle tracks (MyTV+ movies/episodes and YouTube captions).
     var subtitleLinks: SubtitleLinks = SubtitleLinks()
+    var subtitleTracks: [SubtitleTrack] = []
 
     var id: UUID { ref.id }
 
@@ -51,7 +52,11 @@ nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
         self.streamKind = StreamKind.detect(from: movie.stream)
         self.isLive = false
         self.duration = (Double(movie.duration) ?? 0) * 60
-        self.subtitleLinks = movie.subtitles
+        self.subtitleLinks = SubtitleLinks(
+            english: movie.subtitles.english,
+            arabic: movie.subtitles.arabic,
+            kurdish: movie.subtitles.kurdish
+        )
     }
 
     init(episode: VODEpisode, series: VODSeries, season: VODSeason) {
@@ -65,7 +70,11 @@ nonisolated struct PlayableItem: Identifiable, Hashable, Sendable {
         self.streamKind = StreamKind.detect(from: episode.stream)
         self.isLive = false
         self.duration = 0
-        self.subtitleLinks = episode.subtitles
+        self.subtitleLinks = SubtitleLinks(
+            english: episode.subtitles.english,
+            arabic: episode.subtitles.arabic,
+            kurdish: episode.subtitles.kurdish
+        )
     }
 
     /// A trailer for a movie: same artwork/title, different URL, no subtitles, no progress tracking.

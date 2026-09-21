@@ -26,10 +26,10 @@ nonisolated enum StreamKind: Sendable, Equatable {
         default: break
         }
 
-        // The MyTV+ relay serves HLS at /live/<id> with no extension.
-        // Xtream-style paths: /live/<user>/<pass>/<id>.ts  or  /movie/… /series/…
+        // The MyTV+ relay serves HLS at /live/<id> with no extension. Keep
+        // explicit .ts URLs on VLC, but let extensionless HLS use AVPlayer.
         let path = url.path.lowercased()
-        if path.contains("/live/") && ext.isEmpty { return .mpegTS }
+        if path.contains("/live/") && ext.isEmpty { return .hls }
         if url.query?.contains("m3u8") == true { return .hls }
         return .unknown
     }

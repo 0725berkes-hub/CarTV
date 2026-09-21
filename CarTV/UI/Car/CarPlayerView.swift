@@ -15,6 +15,7 @@ struct CarPlayerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var drawerOpen = false
     @State private var qualityOpen = false
+    @State private var subtitleOpen = false
 
     private var small: CGFloat { m.compact ? 44 : 52 }
     private var mid: CGFloat { m.compact ? 52 : 68 }
@@ -86,6 +87,12 @@ struct CarPlayerView: View {
                     .zIndex(3)
             }
 
+            if subtitleOpen {
+                CarSubtitlePicker { withAnimation(.snappy(duration: 0.25)) { subtitleOpen = false }; scheduleHide() }
+                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+                    .zIndex(3)
+            }
+
             if drawerOpen {
                 HStack(spacing: 0) {
                     Spacer()
@@ -151,6 +158,14 @@ struct CarPlayerView: View {
                             CarCircleButton(symbol: playback.gravity.symbol, size: small) { playback.cycleGravity(); bump() }
                             if let item = playback.current, item.ref.kind == .youtube {
                                 CarDownloadButton(item: item, size: small) { bump() }
+                            }
+                            if let item = playback.current, !item.subtitleTracks.isEmpty || !(item.subtitleLinks.isEmpty) {
+                                CarCircleButton(symbol: "captions.bubble", size: small,
+                                                tint: playback.subtitles.isExternalActive ? Theme.accent : .white) {
+                                    withAnimation(.snappy(duration: 0.25)) { subtitleOpen.toggle() }
+                                    qualityOpen = false
+                                    hideTask?.cancel()
+                                }
                             }
                             if !playback.qualityVariants.isEmpty {
                                 Button { withAnimation(.snappy(duration: 0.25)) { qualityOpen.toggle() }; hideTask?.cancel() } label: {
@@ -233,6 +248,10 @@ struct CarPlayerView: View {
                     ProgressView().controlSize(m.compact ? .regular : .large).tint(.white)
                     Text(playback.isFallingBack ? "Switching decoder…" : "Loading…")
                         .font(.system(size: m.compact ? 11 : 14)).foregroundStyle(.white.opacity(0.8))
+                    CarPillButton(title: "Back", symbol: "chevron.left") {
+                        playback.stop()
+                        close()
+                    }
                 }
                 .padding(m.compact ? Theme.s3 : Theme.s5)
                 .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
@@ -513,5 +532,58 @@ struct CarQualityPicker: View {
             .frame(maxWidth: m.compact ? 360 : 520)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
         }
+    }
+}
+
+struct CarSubtitlePicker: View {
+    @Environment(PlaybackController.self) private var playback
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.carMetrics) private var m
+    let close: () -> Void
+
+    private var tracks: [SubtitleTrack] {
+        guard let item = playback.current else { return [] }
+        let vodTracks = item.subtitleLinks.tracks.map { SubtitleTrack(name: $0.label, languageCode: $0.code, url: $0.url) }
+        return item.subtitleTracks + vodTracks
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35).ignoresSafeArea().onTapGesture(perform: close)
+            VStack(spacing: Theme.s3) {
+                Text("Subtitles").font(Theme.Car.title(m.compact ? 16 : 20)).foregroundStyle(.white)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.s2), count: m.compact ? 2 : 3), spacing: Theme.s2) {
+                    subtitleButton(String(localized: "Off"), selected: !playback.subtitles.isExternalActive) {
+                        playback.selectSubtitleTrack(nil)
+                        close()
+                    }
+                    if let item = playback.current {
+                        ForEach(tracks) { track in
+                            subtitleButton(track.name, selected: playback.subtitles.isExternalActive && playback.subtitles.activeURL == track.url) {
+                                settings.subtitleLanguage = track.languageCode
+                                playback.selectSubtitleTrack(nil)
+                                playback.subtitles.loadExternal(track.url, headers: item.headers)
+                                close()
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(m.compact ? Theme.s4 : Theme.s6)
+            .frame(maxWidth: m.compact ? 420 : 620)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.radiusL, style: .continuous))
+        }
+    }
+
+    private func subtitleButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: m.compact ? 14 : 17, weight: .semibold))
+                .foregroundStyle(selected ? Color.black : .white)
+                .lineLimit(2).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity).frame(minHeight: m.compact ? 48 : 56)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(CarPressStyle())
+        .glassEffect(selected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: Capsule())
     }
 }

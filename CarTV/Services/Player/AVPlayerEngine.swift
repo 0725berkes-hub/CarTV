@@ -24,6 +24,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private var stallTimer: Timer?
     private var hasEverPlayed = false
     private var generation = 0
+    private var videoRecoveryTicks = 0
+    private var expectsVideo = true
     private var audibleGroup: AVMediaSelectionGroup?
     private var legibleGroup: AVMediaSelectionGroup?
 
@@ -53,6 +55,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         generation &+= 1
         let gen = generation
         hasEverPlayed = false
+        videoRecoveryTicks = 0
+        expectsVideo = playable.ref.kind == .channel || playable.ref.kind == .vod || playable.ref.kind == .youtube
         userPaused = false
         lastTickPosition = -1; frozenTicks = 0
         knownDuration = playable.isLive ? 0 : playable.duration
@@ -83,7 +87,9 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         // one frame and then sit at rate 0 waiting for data it was told not to wait for.
         newItem.preferredForwardBufferDuration = 0
         newItem.canUseNetworkResourcesForLiveStreamingWhilePaused = true
-        newItem.preferredPeakBitRateForExpensiveNetworks = 0
+        // Korek can establish the connection quickly but struggles when AVPlayer
+        // immediately selects a high-bitrate 1080p rendition.
+        newItem.preferredPeakBitRateForExpensiveNetworks = playable.isLive ? 0 : 2_500_000
         newItem.startsOnFirstEligibleVariant = true
         if let h = maxHeight { newItem.preferredMaximumResolution = CGSize(width: CGFloat(h) * 16 / 9, height: CGFloat(h)) }
         // Live streams need AVPlayer's stall management from the first frame, and so
@@ -152,7 +158,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         // Fail-fast: if nothing has rendered in 12s, hand off to VLC. YouTube's
         // segmented VOD needs the first video + audio byte ranges; give it longer.
         stallTimer?.invalidate()
-        let stallAfter: TimeInterval = playable.ref.kind == .youtube ? 30 : 12
+        let stallAfter: TimeInterval = playable.ref.kind == .youtube ? 30 : (playable.isLive ? 8 : 12)
         stallTimer = Timer.scheduledTimer(withTimeInterval: stallAfter, repeats: false) { @Sendable [weak self] _ in
             onMain {
                 guard let self, self.generation == gen, !self.hasEverPlayed else { return }
@@ -288,6 +294,20 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         if s.duration == 0, knownDuration > 0 { s.duration = knownDuration }
         s.isSeekable = s.duration > 0 || seekableWindow > 30
         if s.videoSize == .zero, item.presentationSize != .zero { s.videoSize = item.presentationSize }
+
+        // A cellular connection can start the audio track while the video track is
+        // still wedged. Let PlaybackController switch to VLC instead of leaving a
+        // black screen that only a manual close/reopen would recover.
+        if s.videoSize == .zero, player.rate > 0, s.position > 0.5,
+              expectsVideo {
+            videoRecoveryTicks += 1
+            if videoRecoveryTicks == 8 {
+                fail(with: nil, reason: .unsupportedFormat)
+                return
+            }
+        } else if s.videoSize != .zero {
+            videoRecoveryTicks = 0
+        }
 
         // The clock is the ground truth. If time is advancing and the player says it's
         // playing, we're playing — regardless of what the last KVO said. KVO on

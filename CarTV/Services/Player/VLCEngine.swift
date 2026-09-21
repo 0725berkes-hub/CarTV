@@ -22,6 +22,8 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
     private var currentGravity: VideoGravity = .fit
     private var tracksLoaded = false
     private var lastKnownItemIsLive = false
+    private var videoRecoveryTicks = 0
+    private var attemptedVideoRecovery = false
 
     private static let libraryConfigured: Void = {
         let lib = VLCLibrary.shared()
@@ -47,6 +49,8 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
         snapshot = PlayerSnapshot(state: .loading)
         tracksLoaded = false
         lastKnownItemIsLive = item.isLive
+        videoRecoveryTicks = 0
+        attemptedVideoRecovery = false
 
         var vlcOptions: [String] = [
             "--network-caching=\(options.networkCachingMs)",
@@ -222,6 +226,17 @@ final class VLCEngine: NSObject, PlayerEngine, VLCMediaPlayerDelegate {
         s.isSeekable = player.isSeekable && len > 0
         if s.state == .buffering || s.state == .loading { s.state = .playing }
         if s.videoSize == .zero, player.hasVideoOut { s.videoSize = player.videoSize }
+        if s.videoSize == .zero, !player.hasVideoOut, s.position > 0.5 {
+            videoRecoveryTicks += 1
+            if videoRecoveryTicks == 8, !attemptedVideoRecovery {
+                attemptedVideoRecovery = true
+                Log.player.notice("VLC audio started without video; restarting media")
+                player.stop()
+                player.play()
+            }
+        } else if s.videoSize != .zero {
+            videoRecoveryTicks = 0
+        }
         snapshot = s
     }
 

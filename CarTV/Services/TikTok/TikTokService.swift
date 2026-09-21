@@ -62,7 +62,8 @@ final class TikTokService {
         if session.isSignedIn { Task { @MainActor in engine.start() } }
 
         // Player ran off the end of the feed → load more, then it advances on its own.
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             AppEnvironment.shared.playback.queueExhausted = { [weak self] in
                 guard let self, let feed = self.activeFeedForPlayer else { return }
                 self.loadMore(feed)

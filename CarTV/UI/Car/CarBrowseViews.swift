@@ -5,9 +5,22 @@ import SwiftData
 
 struct CarHomeView: View {
     @Environment(AppEnvironment.self) private var env
+    @Environment(PlaybackController.self) private var playback
     @Environment(\.carMetrics) private var m
     @Query(sort: [SortDescriptor(\Playlist.sortOrder), SortDescriptor(\Playlist.createdAt)]) private var playlists: [Playlist]
+    @Query(sort: [SortDescriptor(\VideoFolder.sortOrder)]) private var folders: [VideoFolder]
     @Query(sort: [SortDescriptor(\LocalVideo.importedAt, order: .reverse)]) private var videos: [LocalVideo]
+
+    private var defaultVideoGroup: (name: String, videos: [LocalVideo])? {
+        var groups: [(name: String, videos: [LocalVideo])] = []
+        let loose = videos.filter { $0.folder == nil }
+        if !loose.isEmpty { groups.append((String(localized: "Videos"), loose)) }
+        for folder in folders {
+            let folderVideos = videos.filter { $0.folder?.id == folder.id }
+            if !folderVideos.isEmpty { groups.append((folder.name, folderVideos)) }
+        }
+        return groups.max { $0.videos.count < $1.videos.count }
+    }
 
     var body: some View {
         let _ = env.library.revision
@@ -17,6 +30,39 @@ struct CarHomeView: View {
                 if playlists.isEmpty && videos.isEmpty {
                     CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarFlix on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
                 }
+
+                if let group = defaultVideoGroup {
+                    Button {
+                        playback.playRandom(from: group.videos.map(PlayableItem.init(video:)), origin: .car)
+                    } label: {
+                        HStack(spacing: Theme.s3) {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: m.compact ? 18 : 22, weight: .bold))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: m.compact ? 32 : 38)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(localized: "Shuffle \(group.name)"))
+                                    .font(.system(size: m.compact ? 14 : 17, weight: .semibold))
+                                    .foregroundStyle(Theme.ink)
+                                    .lineLimit(1)
+                                Text(String(localized: "\(group.videos.count) videos"))
+                                    .font(.system(size: m.compact ? 11 : 13, weight: .medium))
+                                    .foregroundStyle(Theme.inkMuted)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: m.compact ? 11 : 13, weight: .bold))
+                                .foregroundStyle(Theme.inkMuted)
+                        }
+                        .padding(.horizontal, m.compact ? Theme.s3 : Theme.s4)
+                        .frame(height: m.compact ? 54 : 64)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radiusM, style: .continuous).strokeBorder(Theme.accent.opacity(0.28)))
+                    }
+                    .buttonStyle(CarFocusButtonStyle(radius: Theme.radiusM))
+                    .padding(.horizontal, m.gutter)
+                }
+
                 CarContinueWatchingShelf()
 
                 let favs = env.favorites.favoriteItems()

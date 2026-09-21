@@ -78,7 +78,7 @@ nonisolated enum YTParser {
         let owner = r["ownerText"].exists ? r["ownerText"] : (r["shortBylineText"].exists ? r["shortBylineText"] : r["longBylineText"])
         v.channelName = owner.text
         v.channelID = owner["runs"][0]["navigationEndpoint"]["browseEndpoint"]["browseId"].string
-        v.channelAvatarURL = bestThumb(r["channelThumbnailSupportedRenderers"].find("thumbnails")) ?? bestThumb(r["channelThumbnail"]["thumbnails"])
+        v.channelAvatarURL = channelThumb(r)
         v.thumbnailURL = bestThumb(r["thumbnail"]["thumbnails"]) ?? URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")
         v.durationText = r["lengthText"].text ?? r["thumbnailOverlays"].findAll("thumbnailOverlayTimeStatusRenderer").first?["text"].text
         v.durationSeconds = v.durationText.flatMap(parseDuration)
@@ -116,7 +116,7 @@ nonisolated enum YTParser {
         v.viewsText = parts.dropFirst().first
         v.publishedText = parts.dropFirst(2).first
         v.thumbnailURL = thumb ?? URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg")
-        v.channelAvatarURL = meta["image"].find("sources").array.last?["url"].string.flatMap(URL.init)
+        v.channelAvatarURL = channelThumb(l) ?? meta["image"].find("sources").array.last?["url"].string.flatMap(URL.init)
         let overlays = l["contentImage"].findAll("thumbnailBadgeViewModel")
         if let badge = overlays.first?["text"].string {
             if badge.uppercased() == "LIVE" { v.isLive = true } else { v.durationText = badge; v.durationSeconds = parseDuration(badge) }
@@ -164,6 +164,7 @@ nonisolated enum YTParser {
             var v = YTVideo(id: vid, title: title)
             v.thumbnailURL = thumb ?? URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg")
             v.channelName = lines.first?.first
+            v.channelAvatarURL = channelThumb(t)
             v.mixPlaylistID = watch["playlistId"].string
             v.viewsText = flat.first { $0.localizedCaseInsensitiveContains("view") }
             v.publishedText = flat.first { $0.localizedCaseInsensitiveContains("ago") || $0.localizedCaseInsensitiveContains("Streamed") }
@@ -190,7 +191,8 @@ nonisolated enum YTParser {
         }
         if let bid = browse["browseId"].string {
             if bid.hasPrefix("UC") {
-                return .channel(YTChannel(id: bid, name: title, avatarURL: thumb, subscribersText: flat.first))
+                let avatar = channelThumb(t) ?? thumb
+                return .channel(YTChannel(id: bid, name: title, avatarURL: avatar, subscribersText: flat.first))
             }
             let pid = bid.hasPrefix("VL") ? String(bid.dropFirst(2)) : bid
             // Count often sits in a thumbnail overlay ("12 videos") rather than the lines.
@@ -210,7 +212,7 @@ nonisolated enum YTParser {
     static func channel(_ r: JSONObject) -> YTChannel? {
         guard let id = r["channelId"].string else { return nil }
         var c = YTChannel(id: id, name: r["title"].text ?? "")
-        c.avatarURL = bestThumb(r["thumbnail"]["thumbnails"])
+        c.avatarURL = channelThumb(r) ?? bestThumb(r["thumbnail"]["thumbnails"])
         c.subscribersText = r["subscriberCountText"].text ?? r["videoCountText"].text
         c.description = r["descriptionSnippet"].text
         c.handle = r["subscriberCountText"].text.flatMap { $0.hasPrefix("@") ? $0 : nil }
@@ -332,6 +334,18 @@ nonisolated enum YTParser {
     }
 
     // MARK: Helpers
+
+    /// Channel artwork moves between renderer-specific wrappers across YouTube clients.
+    static func channelThumb(_ node: JSONObject) -> URL? {
+        for key in ["channelThumbnailSupportedRenderers", "channelThumbnail", "avatar", "image"] {
+            for value in node.findAll(key) {
+                if let url = bestThumb(value.find("thumbnails")) ?? value["url"].string.flatMap(URL.init) {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
 
     static func bestThumb(_ thumbs: JSONObject) -> URL? {
         thumbs.array.last?["url"].string.flatMap { s in URL(string: s.hasPrefix("//") ? "https:" + s : s) }

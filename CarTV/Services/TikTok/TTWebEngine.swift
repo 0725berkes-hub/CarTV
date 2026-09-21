@@ -162,11 +162,12 @@ final class TTWebEngine: NSObject, WKScriptMessageHandler, WKNavigationDelegate 
     } catch (e) { return ''; } })()
     """#
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         // Keep the engine on tiktok.com; if it tries to go to /login the session died.
-        if let url = action.request.url, url.path.hasPrefix("/login") {
+        if let url = navigationAction.request.url, url.path.hasPrefix("/login") {
             Task { @MainActor in AppEnvironment.shared.tiktok.sessionExpired() }
-            decisionHandler(.cancel); return
+            decisionHandler(.cancel)
+            return
         }
         decisionHandler(.allow)
     }

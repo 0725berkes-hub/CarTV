@@ -221,12 +221,17 @@ final class VODService {
         let list = raw.compactMap { d -> VODEpisode? in
             guard let id = MyTVAPI.str(d["id"]),
                   let stream = MyTVAPI.url(d["episodeLink"]) ?? MyTVAPI.url(d["link"]) else { return nil }
-            return VODEpisode(id: id, seasonID: season.id,
-                              name: MyTVAPI.str(d["name"]) ?? "",
-                              stream: stream,
-                              subtitles: SubtitleLinks(english: MyTVAPI.url(d["titleEnglishLink"]),
-                                                       arabic: MyTVAPI.url(d["titleArabicLink"]),
-                                                       kurdish: MyTVAPI.url(d["titleKurdishLink"])))
+            return VODEpisode(
+                id: id,
+                seasonID: season.id,
+                name: MyTVAPI.str(d["name"]) ?? "",
+                stream: stream,
+                subtitles: SubtitleLinks(
+                    english: MyTVAPI.url(d["titleEnglishLink"]),
+                    arabic: MyTVAPI.url(d["titleArabicLink"]),
+                    kurdish: MyTVAPI.url(d["titleKurdishLink"])
+                )
+            )
         }
         .sorted { $0.number < $1.number }
         episodeCache[season.id] = list
@@ -291,9 +296,12 @@ final class VODService {
                 backdrop: MyTVAPI.url(d["imageInsideV2"]),
                 stream: stream,
                 trailer: MyTVAPI.url(d["trailerLink"]),
-                subtitles: SubtitleLinks(english: MyTVAPI.url(d["titleEnglishLink"]),
-                                         arabic: MyTVAPI.url(d["titleArabicLink"]),
-                                         kurdish: MyTVAPI.url(d["titleKurdishLink"])))
+                subtitles: SubtitleLinks(
+                    english: MyTVAPI.url(d["titleEnglishLink"]),
+                    arabic: MyTVAPI.url(d["titleArabicLink"]),
+                    kurdish: MyTVAPI.url(d["titleKurdishLink"])
+                )
+            )
         }
         let series = rawSeries.compactMap { d -> VODSeries? in
             guard let id = MyTVAPI.str(d["id"]) else { return nil }
@@ -340,6 +348,8 @@ nonisolated enum MyTVAPI {
             case .episodes: URL(string: "https://mytv-plus.net/android/v2/series/getSeriesEpisodeDetail.php")!
             }
         }
+        nonisolated var isSeriesDetail: Bool { switch self { case .seasons, .episodes: true; default: false } }
+        nonisolated var pathName: String { switch self { case .movies: "movies"; case .series: "series"; case .seasons: "seasons"; case .episodes: "episodes" } }
     }
 
     nonisolated static let userAgent = "And$MyTV"
@@ -362,6 +372,23 @@ nonisolated enum MyTVAPI {
     }()
 
     nonisolated static func post(_ ep: Endpoint, extra: [String: String] = [:]) async throws -> [[String: Any]] {
+        if ep.isSeriesDetail {
+            do {
+                return try await postRelay(ep, extra: extra)
+            } catch {
+                Log.playlist.notice("VOD: relay \(ep.pathName, privacy: .public) failed; trying direct")
+                return try await postDirect(ep, extra: extra)
+            }
+        }
+        do {
+            return try await postDirect(ep, extra: extra)
+        } catch {
+            Log.playlist.notice("VOD: direct \(ep.pathName, privacy: .public) failed; trying relay")
+            return try await postRelay(ep, extra: extra)
+        }
+    }
+
+    nonisolated private static func postDirect(_ ep: Endpoint, extra: [String: String]) async throws -> [[String: Any]] {
         var req = URLRequest(url: ep.url)
         req.httpMethod = "POST"
         req.httpBody = try JSONSerialization.data(withJSONObject: base.merging(extra) { $1 })
@@ -383,6 +410,23 @@ nonisolated enum MyTVAPI {
         return arr
     }
 
+    nonisolated private static func postRelay(_ ep: Endpoint, extra: [String: String]) async throws -> [[String: Any]] {
+        guard let id = extra["id"] else { throw URLError(.badURL) }
+        let route = ep == .seasons ? "api/seasons" : "api/episodes"
+        var components = URLComponents(url: MyTVService.relayBase.appending(path: "\(route)/\(id)"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "seasonNumber", value: extra["seasonNumber"] ?? "1")]
+        var request = URLRequest(url: components.url!, timeoutInterval: 30)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        guard let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw URLError(.cannotParseResponse)
+        }
+        return array
+    }
+
     nonisolated static func str(_ v: Any?) -> String? {
         switch v {
         case let s as String: return s.trimmed.nilIfEmpty
@@ -394,5 +438,12 @@ nonisolated enum MyTVAPI {
     nonisolated static func url(_ v: Any?) -> URL? {
         guard let s = str(v), s.hasPrefix("http") else { return nil }
         return URL(string: s) ?? URL(string: s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
+    }
+
+    nonisolated static func relayURL(_ url: URL?) -> URL? {
+        guard let url else { return nil }
+        var components = URLComponents(url: MyTVService.relayBase.appending(path: "hls"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
+        return components.url
     }
 }

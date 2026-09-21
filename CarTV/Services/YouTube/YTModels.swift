@@ -199,8 +199,12 @@ nonisolated struct YTPlayerResponse: Sendable {
         playbackURL = tracking["videostatsPlaybackUrl"]["baseUrl"].string.flatMap(URL.init)
         watchtimeURL = tracking["videostatsWatchtimeUrl"]["baseUrl"].string.flatMap(URL.init)
         captionTracks = json["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].array.compactMap { t in
-            guard let u = t["baseUrl"].string.flatMap(URL.init), let lang = t["languageCode"].string else { return nil }
-            return (t["name"].text ?? lang, lang, u)
+            guard let base = t["baseUrl"].string, let u = URL(string: base), let lang = t["languageCode"].string else { return nil }
+            var components = URLComponents(url: u, resolvingAgainstBaseURL: false)
+            var queryItems = components?.queryItems ?? []
+            queryItems.append(URLQueryItem(name: "fmt", value: "vtt"))
+            components?.queryItems = queryItems
+            return (t["name"].text ?? lang, lang, components?.url ?? u)
         }
     }
 

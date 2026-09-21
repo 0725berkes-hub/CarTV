@@ -452,6 +452,15 @@ struct TracksSheet: View {
                             }
                         }
                     }
+                    if let item = playback.current {
+                        ForEach(item.subtitleTracks) { t in
+                            row(t.name, selected: playback.subtitles.isExternalActive && playback.subtitles.activeURL == t.url) {
+                                settings.subtitleLanguage = t.languageCode
+                                playback.selectSubtitleTrack(nil)
+                                playback.subtitles.loadExternal(t.url, headers: item.headers)
+                            }
+                        }
+                    }
                     ForEach(playback.snapshot.subtitleTracks) { t in
                         row(t.name, selected: playback.snapshot.selectedSubtitleTrack == t.id) { playback.selectSubtitleTrack(t.id) }
                     }
