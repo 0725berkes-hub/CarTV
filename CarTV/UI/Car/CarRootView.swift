@@ -2,12 +2,13 @@ import SwiftUI
 
 enum CarSection: Hashable, CaseIterable, Identifiable {
     var id: Self { self }
-    case home, favorites, youtube, tiktok, cast, library
+    case home, favorites, browser, library, more, youtube, tiktok, cast
+    static let tabs: [CarSection] = [.home, .favorites, .browser, .library, .more]
     var title: LocalizedStringResource {
-        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .tiktok: "TikTok"; case .cast: "Cast"; case .library: "Library" }
+        switch self { case .home: "Home"; case .favorites: "Favorites"; case .youtube: "YouTube"; case .browser: "Browser"; case .tiktok: "TikTok"; case .cast: "Cast"; case .library: "Library"; case .more: "More" }
     }
     var symbol: String {
-        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .tiktok: "music.note"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill" }
+        switch self { case .home: "house.fill"; case .favorites: "heart.fill"; case .youtube: "play.rectangle.fill"; case .browser: "globe"; case .tiktok: "music.note"; case .cast: "tv.badge.wifi"; case .library: "square.stack.fill"; case .more: "ellipsis" }
     }
 }
 
@@ -54,6 +55,8 @@ struct CarRootView: View {
     @State private var section: CarSection = .home
     @State private var showPlayer = false
     @State private var paths: [CarSection: [CarRoute]] = [:]
+    @State private var browserWebsiteOpen = false
+    @State private var keyboard = CarKeyboardPresentation()
 
     private var path: Binding<[CarRoute]> {
         Binding(get: { paths[section] ?? [] }, set: { paths[section] = $0 })
@@ -68,25 +71,30 @@ struct CarRootView: View {
                 Theme.ground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    CarHeader(
-                        section: $section,
-                        route: path.wrappedValue.last,
-                        nowPlaying: playback.isActive ? playback.current : nil,
-                        back: { withAnimation(.easeOut(duration: 0.2)) { _ = path.wrappedValue.popLast() } },
-                        openPlayer: { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
-                    )
-                    .padding(.horizontal, metrics.gutter)
-                    .padding(.top, Theme.s3)
-                    .padding(.bottom, Theme.s4)
+                    if section != .browser || !browserWebsiteOpen {
+                        CarHeader(
+                            section: $section,
+                            route: path.wrappedValue.last,
+                            nowPlaying: playback.isActive ? playback.current : nil,
+                            back: { withAnimation(.easeOut(duration: 0.2)) { _ = path.wrappedValue.popLast() } },
+                            openPlayer: { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+                        )
+                        .padding(.horizontal, metrics.gutter)
+                        .padding(.top, Theme.s3)
+                        .padding(.bottom, Theme.s4)
+                    }
 
                     ZStack {
                         switch section {
                         case .home:      CarNavHost(path: path) { CarHomeView() }
                         case .favorites: CarNavHost(path: path) { CarFavoritesView() }
                         case .youtube:   CarNavHost(path: path) { CarYouTubeView() }
+                        case .browser:   CarBrowserView(onClose: { withAnimation(.easeOut(duration: 0.2)) { section = .home } },
+                                                       onWebsiteOpenChanged: { browserWebsiteOpen = $0 })
                         case .tiktok:    CarNavHost(path: path) { CarTikTokView() }
                         case .cast:      CarNavHost(path: path) { CarCastView() }
                         case .library:   CarNavHost(path: path) { CarLibraryView() }
+                        case .more:      CarMoreView { section = $0 }
                         }
                     }
                     .id(section)
@@ -100,14 +108,20 @@ struct CarRootView: View {
                         .zIndex(2)
                 } else if showPlayer {
                     CarPlayerView {
+                        if env.browser.returnFromPlayer() {
+                            withAnimation(.snappy(duration: 0.3)) { showPlayer = false }
+                            return
+                        }
                         if let item = playback.current, item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
                             var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
                             section = .youtube
                             var p = paths[.youtube] ?? []
-                            if case .ytVideo(let cur)? = p.last, cur.id == vid { /* already there */ } else { p.append(.ytVideo(v)) }
+                            if case .ytVideo? = p.last { p[p.count - 1] = .ytVideo(v) }
+                            else { p.append(.ytVideo(v)) }
                             paths[.youtube] = p
                         }
-                        playback.stop()
+                        // Collapsing the YouTube player preserves playback and its playlist/detail route.
+                        if playback.current?.ref.kind != .youtube { playback.stop() }
                         withAnimation(.snappy(duration: 0.3)) { showPlayer = false }
                     }
                         .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
@@ -115,32 +129,52 @@ struct CarRootView: View {
                         .zIndex(1)
                 }
                 DownloadNoticeBanner(compact: true).zIndex(2)
+
             }
             // Small display → lay out at the design size, shrink the whole tree to fit
             // the safe area (the CarPlay sidebar is outside it and must stay untouched).
             .frame(width: layout.width, height: layout.height)
             .scaleEffect(scale, anchor: .topLeading)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .overlay {
+                if let request = keyboard.request {
+                    // The keyboard uses physical screen bounds, not the scaled page canvas.
+                    CarBrowserKeyboard(text: request.text, placeholder: request.placeholder, secure: request.secure,
+                        onGo: { request.onGo(); keyboard.dismiss() },
+                        onDone: { request.onDone(); keyboard.dismiss() })
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Theme.ground)
+                }
+            }
+            .environment(\.openBrowser, OpenBrowserAction { destination in
+                env.browser.open(destination, isCar: true)
+                section = .browser
+            })
+            .environment(keyboard)
             .environment(\.carMetrics, metrics)
             .background(Theme.ground.ignoresSafeArea())
         }
         .preferredColorScheme(settings.appearance.colorScheme ?? (car.contentStyle == .light ? .light : .dark))
+        .onChange(of: section) { _, _ in keyboard.dismiss() }
         .onChange(of: playback.current?.id) { old, new in
-            if new != nil, old != new { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
-            if new == nil { withAnimation(.snappy(duration: 0.3)) { showPlayer = false } }
+            if new != nil, old != new, !env.browser.isContinuingCarBrowserAudio { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+            if new == nil {
+                env.browser.returnFromPlayer()
+                withAnimation(.snappy(duration: 0.3)) { showPlayer = false }
+            }
         }
         .onChange(of: playback.isActive) { _, active in
-            if active, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+            if active, !showPlayer, !env.browser.isContinuingCarBrowserAudio { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
         .onChange(of: playback.carPlayerRequest) { _, _ in
             if playback.isActive { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
-        .onAppear { if playback.isActive { showPlayer = true } }
+        .onAppear { if playback.isActive, !env.browser.isContinuingCarBrowserAudio { showPlayer = true } }
         .task {
             // The car scene can attach after playback began on the phone; make sure the
             // player is up and its surface hosted once the view tree exists.
             try? await Task.sleep(for: .milliseconds(150))
-            if playback.isActive, !showPlayer { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
+            if playback.isActive, !showPlayer, !env.browser.isContinuingCarBrowserAudio { withAnimation(.snappy(duration: 0.3)) { showPlayer = true } }
         }
     }
 }
@@ -252,30 +286,25 @@ struct CarHeader: View {
         .animation(.snappy(duration: 0.32, extraBounce: 0.05), value: nowPlaying?.id)
     }
 
-    /// Icons when the row is shared with Now Playing (or the display is compact);
-    /// the selected tab still shows its name. Full labels otherwise.
-    private var iconMode: Bool { nowPlaying != nil || m.compact }
-
+    /// Keep the expanded set of tabs compact; the selected tab still shows its name.
     private var segments: some View {
         HStack(spacing: 0) {
-            ForEach(CarSection.allCases.filter { $0 != .tiktok || settings.tiktokEnabled }, id: \.self) { (s: CarSection) in
-                let selected = section == s
+            ForEach(CarSection.tabs, id: \.self) { (s: CarSection) in
+                let selected = section == s || (s == .more && [.youtube, .tiktok, .cast].contains(section))
                 Button {
                     withAnimation(.snappy(duration: 0.28, extraBounce: 0.08)) { section = s }
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     HStack(spacing: 7) {
-                        if iconMode {
-                            Image(systemName: s.symbol)
-                                .font(.system(size: m.compact ? 15 : 17, weight: .semibold))
-                                .symbolRenderingMode(.hierarchical)
-                        }
-                        if !iconMode || selected {
+                        Image(systemName: s.symbol)
+                            .font(.system(size: m.compact ? 15 : 17, weight: .semibold))
+                            .symbolRenderingMode(.hierarchical)
+                        if selected {
                             Text(s.title).font(font).lineLimit(1).fixedSize()
                         }
                     }
                     .foregroundStyle(selected ? Color.black : Theme.ink)
-                    .padding(.horizontal, iconMode ? (m.compact ? 13 : 16) : (m.compact ? 18 : 26))
+                    .padding(.horizontal, m.compact ? 13 : 16)
                     .frame(height: h - 8)
                     .frame(minWidth: h - 8)
                     .background {
@@ -290,12 +319,12 @@ struct CarHeader: View {
                     .accessibilityLabel(Text(s.title))
                 }
                 .buttonStyle(CarPressStyle())
+                .id(s)
             }
         }
         .padding(4)
-        .glassEffect(.regular.interactive(), in: Capsule())
         .fixedSize(horizontal: true, vertical: false)
-        .animation(.snappy(duration: 0.28), value: iconMode)
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 
     private func backPill(_ route: CarRoute) -> some View {
@@ -397,4 +426,3 @@ struct CarFocusButtonStyle: ButtonStyle {
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
-

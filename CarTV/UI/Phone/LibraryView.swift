@@ -28,15 +28,26 @@ struct LibraryView: View {
     @State private var deletingFolder: VideoFolder?
     @State private var refreshing: Set<UUID> = []
     @State private var toast: String?
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
-            List {
-                favoritesSection
-                if env.settings.mytvEnabled { mytvSection }
-                sourcesSection
-                localSection
+            Group {
+                if query.isEmpty {
+                    List {
+                        favoritesSection
+                        if env.settings.mytvEnabled { mytvSection }
+                        sourcesSection
+                        localSection
+                    }
+                } else {
+                    SearchResultsView(query: query)
+                }
             }
+            .searchable(text: $query, prompt: "Search library")
+            .searchFocused($searchFocused)
+            .onSubmit(of: .search) { searchFocused = false }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Theme.ground.ignoresSafeArea())

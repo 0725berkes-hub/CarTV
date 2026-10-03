@@ -40,6 +40,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         player.usesExternalPlaybackWhileExternalScreenIsActive = false
         player.automaticallyWaitsToMinimizeStalling = false   // start on first decodable frame; we re-enable after playback begins
         player.preventsDisplaySleepDuringVideoPlayback = true
+        // CarPlay's launcher hides the video surface, but audio should keep playing.
+        player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
 
         playerObservers.append(player.observe(\.timeControlStatus, options: [.new]) { @Sendable [weak self] _, _ in
             onMain { self?.refreshState() }
@@ -381,8 +383,16 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         } else if let code {
             failure = (code == 401 || code == 403) ? .authRequired : .unreachable
         } else if let e = error {
-            switch (e.domain, e.code) {
-            case (NSURLErrorDomain, NSURLErrorTimedOut), (NSURLErrorDomain, NSURLErrorCannotConnectToHost), (NSURLErrorDomain, NSURLErrorCannotFindHost):
+            // AVFoundation can wrap the transport error several levels deep.
+            var cause = e
+            for _ in 0..<8 {
+                if cause.domain == NSURLErrorDomain { break }
+                guard let underlying = cause.userInfo[NSUnderlyingErrorKey] as? NSError else { break }
+                cause = underlying
+            }
+            let classified = cause.domain == NSURLErrorDomain ? cause : e
+            switch (classified.domain, classified.code) {
+            case (NSURLErrorDomain, NSURLErrorNetworkConnectionLost), (NSURLErrorDomain, NSURLErrorTimedOut), (NSURLErrorDomain, NSURLErrorCannotConnectToHost), (NSURLErrorDomain, NSURLErrorCannotFindHost):
                 failure = .unreachable
             case (NSURLErrorDomain, NSURLErrorNotConnectedToInternet):
                 failure = .network(String(localized: "Check that Wi‑Fi is on, then try again."))

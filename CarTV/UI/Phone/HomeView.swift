@@ -66,7 +66,25 @@ struct HomeView: View {
     private var feed: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.s6) {
-                ContinueWatchingShelf()
+                VStack(spacing: Theme.s2) {
+                    if !localVideos.isEmpty {
+                        Button {
+                            playback.playRandom(from: localVideos.map(PlayableItem.init(video:)), origin: .phone)
+                        } label: {
+                            HStack(spacing: Theme.s3) {
+                                Image(systemName: "shuffle").foregroundStyle(Theme.accent)
+                                Text("Shuffle Videos").font(Theme.Font.headline).foregroundStyle(Theme.ink)
+                                Spacer()
+                                Text("\(localVideos.count)").font(Theme.Font.caption).foregroundStyle(Theme.inkMuted)
+                            }
+                            .padding(.horizontal, Theme.s4).frame(height: 52)
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.radiusM))
+                            .contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                    BrowserShortcuts()
+                }
+                .padding(.horizontal, Theme.s4)
 
                 FavoritesShelf()
 
@@ -75,6 +93,8 @@ struct HomeView: View {
                         VideoGrid3(videos: Array(localVideos.prefix(6)))
                     }
                 }
+
+                ContinueWatchingShelf()
 
                 ForEach(playlists) { playlist in
                     HomeSection(title: LocalizedStringResource(stringLiteral: playlist.name),

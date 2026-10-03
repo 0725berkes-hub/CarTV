@@ -1,87 +1,115 @@
 import Foundation
 import OSLog
 
-/// Reports playback to YouTube the way its own clients do, so videos watched in
-/// CarTV show up in the account's History and "Continue watching", and resume
-/// positions sync across devices. Two beacons from the player response:
-/// `videostatsPlaybackUrl` once at start, `videostatsWatchtimeUrl` periodically.
+/// Account-linked history, owned by the video actually playing rather than by stream resolution.
 @MainActor
 final class YTWatchHistory {
     private struct Session {
         let videoID: String
-        let playback: URL?
-        let watchtime: URL?
         let cpn: String
+        let beganAt = Date()
+        var playback: URL?
+        var watchtime: URL?
         var startedReported = false
-        var lastReportedAt: TimeInterval = 0       // media time of the last watchtime beacon
+        var reporting = false
+        var lastReportedAt: TimeInterval = 0
         var lastWallReport = Date.distantPast
+        var position: TimeInterval = 0
+        var duration: TimeInterval = 0
+        var playing = false
     }
     private var session: Session?
+    private var trackingTask: Task<Void, Never>?
     private let auth: YTAuth
-    private let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
-
     init(auth: YTAuth) { self.auth = auth }
 
-    func begin(videoID: String, playbackURL: URL?, watchtimeURL: URL?) {
-        session = Session(videoID: videoID, playback: playbackURL, watchtime: watchtimeURL, cpn: Self.cpn())
-    }
-
-    func end() { session = nil }
-
-    /// Called from the progress timer. Sends the start beacon once playback has
-    /// actually begun, then a watchtime beacon at most every 10s of wall time.
-    func tick(videoID: String, position: TimeInterval, duration: TimeInterval, playing: Bool) {
-        guard var s = session, s.videoID == videoID, playing, position > 0.5 else { return }
-        if !s.startedReported, let u = s.playback {
-            s.startedReported = true
-            send(u, extra: ["cpn": s.cpn, "cmt": fmt(position), "len": fmt(duration), "st": "0", "et": fmt(position)])
-        }
-        if s.startedReported, Date().timeIntervalSince(s.lastWallReport) >= 10, let u = s.watchtime {
-            let from = s.lastReportedAt
-            send(u, extra: ["cpn": s.cpn, "cmt": fmt(position), "len": fmt(duration), "st": fmt(from), "et": fmt(position), "state": "playing", "final": "0"])
-            s.lastReportedAt = position
-            s.lastWallReport = .now
-        }
-        session = s
-    }
-
-    /// Flush on pause / stop / next so the resume point is exact.
-    func flush(videoID: String, position: TimeInterval, duration: TimeInterval) {
-        guard let s = session, s.videoID == videoID, s.startedReported, let u = s.watchtime else { return }
-        send(u, extra: ["cpn": s.cpn, "cmt": fmt(position), "len": fmt(duration), "st": fmt(s.lastReportedAt), "et": fmt(position), "state": "paused", "final": "1"])
-        session?.lastReportedAt = position
-        session?.lastWallReport = .now
-    }
-
-    private func send(_ base: URL, extra: [String: String]) {
-        Task { [auth, ua] in
-            guard var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return }
-            var items = comps.queryItems ?? []
-            items.append(contentsOf: [
-                URLQueryItem(name: "ns", value: "yt"), URLQueryItem(name: "el", value: "detailpage"),
-                URLQueryItem(name: "ver", value: "2"), URLQueryItem(name: "c", value: "VISIONOS"), URLQueryItem(name: "cver", value: "1.02"),
-                URLQueryItem(name: "rt", value: fmt(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 100_000))),
-            ])
-            for (k, v) in extra { items.append(URLQueryItem(name: k, value: v)) }
-            comps.queryItems = items
-            guard let url = comps.url else { return }
-            var req = URLRequest(url: url)
-            req.setValue(ua, forHTTPHeaderField: "User-Agent")
-            if let token = await auth.token() { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    func begin(videoID: String) {
+        guard session?.videoID != videoID else { return }
+        end()
+        let cpn = Self.cpn()
+        session = Session(videoID: videoID, cpn: cpn)
+        trackingTask = Task { [weak self, auth] in
+            guard let token = await auth.token(), !Task.isCancelled else { return }
             do {
-                let (_, r) = try await URLSession.shared.data(for: req)
-                if let http = r as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                    Log.network.notice("YT stats \(url.path, privacy: .public) HTTP \(http.statusCode)")
+                let urls = try await InnerTubeClient.shared.historyTracking(videoID: videoID, cpn: cpn, accessToken: token)
+                guard let self, !Task.isCancelled, self.session?.cpn == cpn else { return }
+                self.session?.playback = urls.0
+                self.session?.watchtime = urls.1
+                if let latest = self.session {
+                    self.tick(videoID: latest.videoID, position: latest.position, duration: latest.duration, playing: latest.playing)
                 }
             } catch {
-                Log.network.notice("YT stats failed: \(error.localizedDescription, privacy: .public)")
+                if !Task.isCancelled { Log.network.notice("YT account history setup failed: \(error.localizedDescription, privacy: .public)") }
             }
         }
     }
 
-    nonisolated private func fmt(_ t: TimeInterval) -> String { String(format: "%.1f", max(0, t)) }
+    func end() { trackingTask?.cancel(); trackingTask = nil; session = nil }
 
-    /// Client playback nonce: 16 chars from YouTube's alphabet.
+    func tick(videoID: String, position: TimeInterval, duration: TimeInterval, playing: Bool) {
+        guard var s = session, s.videoID == videoID else { return }
+        s.position = position; s.duration = duration; s.playing = playing
+        session = s
+        guard playing, position > 0.5, !s.reporting,
+              Date().timeIntervalSince(s.lastWallReport) >= 10,
+              let playback = s.playback, let watchtime = s.watchtime else { return }
+        session?.reporting = true
+        session?.lastWallReport = .now
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if !s.startedReported {
+                    try await self.send(playback, session: s, extra: ["st": "0", "et": self.fmt(position)])
+                    if self.session?.cpn == s.cpn { self.session?.startedReported = true }
+                }
+                try await self.send(watchtime, session: s, extra: ["st": self.fmt(s.lastReportedAt), "et": self.fmt(position), "state": "playing", "final": "0"])
+                if self.session?.cpn == s.cpn { self.session?.lastReportedAt = position }
+            } catch { Log.network.notice("YT history report failed: \(error.localizedDescription, privacy: .public)") }
+            if self.session?.cpn == s.cpn { self.session?.reporting = false }
+        }
+    }
+
+    /// Snapshot before switching videos; the outgoing report retains its own nonce and URLs.
+    func flush(videoID: String, position: TimeInterval, duration: TimeInterval) {
+        guard var s = session, s.videoID == videoID else { return }
+        s.position = position; s.duration = duration; s.playing = false
+        session = s
+        guard position > 0.5, let playback = s.playback, let watchtime = s.watchtime else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if !s.startedReported { try await self.send(playback, session: s, extra: ["st": "0", "et": self.fmt(position)]) }
+                try await self.send(watchtime, session: s, extra: ["st": self.fmt(s.lastReportedAt), "et": self.fmt(position), "state": "paused", "final": "1"])
+            } catch { Log.network.notice("YT final history report failed: \(error.localizedDescription, privacy: .public)") }
+        }
+        session?.lastReportedAt = position
+        session?.lastWallReport = .now
+    }
+
+    private func send(_ base: URL, session s: Session, extra: [String: String]) async throws {
+        guard let token = await auth.token() else { throw YTError.signInRequired }
+        guard var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) else { throw YTError.parse("History URL") }
+        var fields = extra
+        fields["cpn"] = s.cpn; fields["cmt"] = fmt(s.position); fields["len"] = fmt(s.duration)
+        fields["rt"] = fmt(Date().timeIntervalSince(s.beganAt))
+        // Keep the authenticated client's tracking identity and remove duplicate query keys.
+        var items = (comps.queryItems ?? []).filter { fields[$0.name] == nil }
+        for (key, value) in ["ns": "yt", "el": "detailpage", "ver": "2", "c": "TVHTML5", "cver": InnerTubeClient.tvhtml5.version] {
+            if !items.contains(where: { $0.name == key }) { items.append(URLQueryItem(name: key, value: value)) }
+        }
+        items.append(contentsOf: fields.map { URLQueryItem(name: $0.key, value: $0.value) })
+        comps.queryItems = items
+        guard let url = comps.url else { throw YTError.parse("History URL") }
+        var request = URLRequest(url: url)
+        request.setValue(InnerTubeClient.tvhtml5.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw YTError.network("History HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+    }
+
+    nonisolated private func fmt(_ t: TimeInterval) -> String { String(format: "%.1f", max(0, t)) }
     nonisolated private static func cpn() -> String {
         let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
         return String((0..<16).map { _ in alphabet.randomElement()! })

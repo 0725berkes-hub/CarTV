@@ -15,10 +15,13 @@ actor LocalPlaylistServer {
 
     private init() {}
 
-    /// Starts once; returns the base URL (http://127.0.0.1:PORT/).
+    /// Reuse only a live listener. A suspended/failed listener's old port is not playable.
     func start() async throws -> URL {
-        if let baseURL { return baseURL }
         if let starting { return try await starting.value }
+        if let baseURL, let listener, case .ready = listener.state { return baseURL }
+        listener?.cancel()
+        listener = nil
+        baseURL = nil
         let task = Task<URL, Error> { try await self.listen() }
         starting = task
         do {
@@ -27,9 +30,20 @@ actor LocalPlaylistServer {
             starting = nil
             return url
         } catch {
+            listener?.cancel()
+            listener = nil
+            baseURL = nil
             starting = nil
             throw error
         }
+    }
+
+    func restart() async throws -> URL {
+        if let starting { return try await starting.value }
+        listener?.cancel()
+        listener = nil
+        baseURL = nil
+        return try await start()
     }
 
     private func listen() async throws -> URL {
@@ -39,20 +53,31 @@ actor LocalPlaylistServer {
         let l = try NWListener(using: params)
         listener = l
         let box = ContinuationBox()
-        l.stateUpdateHandler = { st in
+        l.stateUpdateHandler = { [weak l] st in
             switch st {
             case .ready:
-                if let p = l.port?.rawValue {
+                if let p = l?.port?.rawValue {
                     Log.player.info("HLS server on 127.0.0.1:\(p)")
                     box.resume(.success(URL(string: "http://127.0.0.1:\(p)/")!))
                 }
-            case .failed(let e): box.resume(.failure(e))
+            case .failed(let e):
+                Log.player.error("HLS listener failed: \(e.localizedDescription, privacy: .public)")
+                box.resume(.failure(e))
+            case .cancelled: box.resume(.failure(CancellationError()))
             default: break
             }
         }
-        l.newConnectionHandler = { c in LocalPlaylistServer.serve(c, on: self.queue) }
+        let serverQueue = queue
+        l.newConnectionHandler = { c in LocalPlaylistServer.serve(c, on: serverQueue) }
         l.start(queue: queue)
-        return try await withCheckedThrowingContinuation { box.set($0) }
+        queue.asyncAfter(deadline: .now() + 5) {
+            if box.resume(.failure(URLError(.timedOut))) { l.cancel() }
+        }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { box.set($0) }
+        } onCancel: {
+            if box.resume(.failure(CancellationError())) { l.cancel() }
+        }
     }
 
     nonisolated private static func serve(_ c: NWConnection, on queue: DispatchQueue) {
@@ -83,13 +108,18 @@ nonisolated private final class ContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var cont: CheckedContinuation<URL, Error>?
     private var pending: Result<URL, Error>?
+    private var finished = false
 
     func set(_ c: CheckedContinuation<URL, Error>) {
         lock.lock(); defer { lock.unlock() }
         if let p = pending { c.resume(with: p); pending = nil } else { cont = c }
     }
-    func resume(_ r: Result<URL, Error>) {
+    @discardableResult
+    func resume(_ r: Result<URL, Error>) -> Bool {
         lock.lock(); defer { lock.unlock() }
+        guard !finished else { return false }
+        finished = true
         if let c = cont { cont = nil; c.resume(with: r) } else if pending == nil { pending = r }
+        return true
     }
 }

@@ -322,6 +322,7 @@ struct PlayerView: View {
         Task { try? await Task.sleep(for: .milliseconds(600)); withAnimation { seekFlash = nil } }
     }
     private func close() {
+        if env.browser.returnFromPlayer() { return }
         // Playback continues; the mini player under the tab bar brings it back.
         if let item = playback.current, item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
             var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL

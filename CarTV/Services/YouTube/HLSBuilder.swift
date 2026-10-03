@@ -187,9 +187,10 @@ nonisolated enum HLSBuilder {
         return lines.joined(separator: "\n")
     }
 
-    static func purge(olderThan age: TimeInterval = 6 * 3600) {
+    static func purge(olderThan age: TimeInterval = 6 * 3600, keepingVideoID: String? = nil) {
         guard let items = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
         for item in items {
+            if item.lastPathComponent == keepingVideoID { continue }
             if let d = try? item.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, Date().timeIntervalSince(d) > age {
                 try? FileManager.default.removeItem(at: item)
             }

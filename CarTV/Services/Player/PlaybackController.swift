@@ -149,6 +149,7 @@ final class PlaybackController {
     }
     private var engine: PlayerEngine
     private var progressTimer: Timer?
+    private var playRequestID: UUID?
     private var attemptedVLC = false
     private var lastSavedPosition: TimeInterval = 0
 
@@ -171,7 +172,11 @@ final class PlaybackController {
 
     /// `presentPlayer: false` plays inline (the TikTok pager hosts the video itself)
     /// instead of pushing the full-screen phone player.
-    func play(_ item: PlayableItem, queue: [PlayableItem]? = nil, origin: PlaybackOrigin, resume: Bool = true, presentPlayer: Bool = true) {
+    func play(_ item: PlayableItem, queue: [PlayableItem]? = nil, origin: PlaybackOrigin, resume: Bool = true, presentPlayer: Bool = true, startPosition: TimeInterval? = nil, continueInBackground: Bool = false) {
+        let requestID = UUID()
+        playRequestID = requestID
+        persistProgress(force: true)
+        AppEnvironment.shared.youtube.history.end()
         // 1. Instant UI: set current + present the player synchronously, nothing slow yet.
         if let queue { self.queue = queue } else if !self.queue.contains(where: { $0.id == item.id }) { self.queue = [item] }
         current = item
@@ -193,29 +198,37 @@ final class PlaybackController {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         // Items that still need resolving (YouTube stubs) take a few seconds; the
         // previous video must not keep playing under the new title meanwhile.
-        if item.ref.kind == .youtube, item.url.host?.contains("youtube.com") == true || item.url.host?.contains("youtu.be") == true {
+        if item.ref.kind == .youtube {
             engine.stop()
         }
 
         // 2. Next turn: engine + I/O, after the presentation has been committed.
-        let startAt = resume && !item.isLive ? progress.resumePosition(for: item.ref) : nil
+        // Browser handoff must use the webpage's time, including zero, rather than
+        // older library progress. Apply it when the engine starts, after resolution.
+        let explicitPosition = startPosition.flatMap { $0.isFinite ? max(0, $0) : nil }
+        let startAt = item.isLive ? nil : (explicitPosition ?? (resume ? progress.resumePosition(for: item.ref) : nil))
         let kind: PlayerEngineKind = (item.streamKind == .hls && !settings.softwareDecoding) || (!item.isLive && item.streamKind.prefersAVPlayer) ? .avPlayer : .vlc
+        // Let an in-flight browser-to-player resolution finish after the car scene
+        // backgrounds. The normal audio background mode takes over once started.
+        let backgroundTask = PlaybackStartupBackgroundTask(enabled: continueInBackground || AppEnvironment.shared.browser.isContinuingCarBrowserAudio)
         Task { @MainActor [weak self] in
-            guard let self, self.current?.id == item.id else { return }
+            defer { backgroundTask.end() }
+            guard let self, self.current?.id == item.id, self.playRequestID == requestID else { return }
             var item = item
             var kind = kind
-            // YouTube favourites/stubs carry the watch-page URL; resolve to a real stream first.
-            if item.ref.kind == .youtube, item.url.host?.contains("youtube.com") == true || item.url.host?.contains("youtu.be") == true {
+            // Validate every YouTube queue entry, including previously resolved URLs and local server ports.
+            if item.ref.kind == .youtube {
                 guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
                 do {
                     var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
                     let resolved = try await AppEnvironment.shared.youtube.resolve(v)
-                    guard self.current?.id == item.id else { return }
+                    guard self.current?.id == item.id, self.playRequestID == requestID else { return }
                     item = resolved.item
                     self.current = item
                     if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = item }
                     kind = .avPlayer
                 } catch {
+                    guard self.current?.id == item.id, self.playRequestID == requestID else { return }
                     self.snapshot = PlayerSnapshot(state: .failed(.unknown(error.localizedDescription)))
                     return
                 }
@@ -225,14 +238,18 @@ final class PlaybackController {
                let channel = AppEnvironment.shared.library.channel(id: item.ref.id),
                channel.playlist?.sourceURL == MyTVService.sourceURL {
                 await MyTVService.refreshForCurrentNetwork(env: AppEnvironment.shared, force: true)
-                guard self.current?.id == item.id,
+                guard self.current?.id == item.id, self.playRequestID == requestID,
                       let fresh = AppEnvironment.shared.library.item(for: item.ref) else { return }
                 item = fresh
                 self.current = fresh
                 if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = fresh }
             }
+            if item.ref.kind == .youtube, let vid = YouTubeService.videoID(from: item.ref.id) {
+                AppEnvironment.shared.youtube.history.begin(videoID: vid)
+            }
             self.start(on: kind, item: item, startAt: startAt)
             _ = await AudioSessionController.activate() as Bool
+            guard self.current?.id == item.id, self.playRequestID == requestID else { return }
             self.startProgressTimer()
             self.subtitles.reset(for: item)
             self.progress.touch(item.ref)
@@ -344,8 +361,10 @@ final class PlaybackController {
         }
     }
 
-    func stop() {
+    func stop(deactivateAudio: Bool = true) {
+        playRequestID = nil
         persistProgress(force: true)
+        AppEnvironment.shared.youtube.history.end()
         progressTimer?.invalidate()
         engine.stop()
         current = nil
@@ -356,7 +375,7 @@ final class PlaybackController {
         isPhonePlayerPresented = false
         subtitles.reset(for: nil)
         nowPlaying.clear()
-        AudioSessionController.deactivateIfIdle()
+        if deactivateAudio { AudioSessionController.deactivateIfIdle() }
     }
 
     func seek(to seconds: TimeInterval) {
@@ -373,18 +392,20 @@ final class PlaybackController {
 
     private func refreshYouTubeStream(item: PlayableItem, resumeAt: TimeInterval) {
         guard let vid = YouTubeService.videoID(from: item.ref.id) else { return }
+        let requestID = playRequestID
         isFallingBack = true
         Task { @MainActor [weak self] in
-            guard let self, self.current?.id == item.id else { return }
+            guard let self, self.current?.id == item.id, self.playRequestID == requestID else { return }
             var v = YTVideo(id: vid, title: item.title); v.channelName = item.subtitle; v.thumbnailURL = item.artworkURL
             do {
                 let resolved = try await AppEnvironment.shared.youtube.resolve(v, fresh: true)
-                guard self.current?.id == item.id else { return }
+                guard self.current?.id == item.id, self.playRequestID == requestID else { return }
                 let fresh = resolved.item
                 self.current = fresh
                 if let i = self.queue.firstIndex(where: { $0.id == item.id }) { self.queue[i] = fresh }
                 self.start(on: .avPlayer, item: fresh, startAt: resumeAt > 1 ? resumeAt : nil)
             } catch {
+                guard self.current?.id == item.id, self.playRequestID == requestID else { return }
                 self.isFallingBack = false
                 self.snapshot = PlayerSnapshot(state: .failed(.network(error.localizedDescription)))
             }
@@ -683,5 +704,26 @@ final class PlaybackController {
         guard force || abs(snapshot.position - lastSavedPosition) >= 4 else { return }
         lastSavedPosition = snapshot.position
         progress.record(item.ref, position: snapshot.position, duration: snapshot.duration)
+    }
+}
+
+/// Covers stream resolution during a CarPlay background transition; audio mode
+/// owns the ongoing playback. Expiration and normal completion end it only once.
+@MainActor
+private final class PlaybackStartupBackgroundTask {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    init(enabled: Bool) {
+        guard enabled else { return }
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "Browser audio handoff") { [weak self] in
+            Task { @MainActor in self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        let task = identifier
+        identifier = .invalid
+        UIApplication.shared.endBackgroundTask(task)
     }
 }

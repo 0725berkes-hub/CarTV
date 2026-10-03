@@ -27,7 +27,7 @@ struct CarHomeView: View {
         let _ = env.progress.revision
         ScrollView {
             LazyVStack(alignment: .leading, spacing: m.compact ? Theme.s4 : Theme.s6) {
-                if playlists.isEmpty && videos.isEmpty {
+                if playlists.isEmpty && videos.isEmpty && env.favorites.favoriteItems().isEmpty {
                     CarEmptyState(symbol: "iphone.and.arrow.forward", title: "Add sources on your iPhone first", message: "Open CarFlix on your iPhone and add an M3U playlist or import videos. They appear here instantly.")
                 }
 
@@ -63,20 +63,12 @@ struct CarHomeView: View {
                     .padding(.horizontal, m.gutter)
                 }
 
-                CarContinueWatchingShelf()
+                BrowserShortcuts(isCar: true).padding(.horizontal, m.gutter)
 
                 let favs = env.favorites.favoriteItems()
                 if !favs.isEmpty {
                     CarShelf(title: "Favorites", seeAll: favs.count > 8 ? .favorites : nil) {
                         ForEach(favs.prefix(16)) { item in CarTileButton(item: item, queue: favs) }
-                    }
-                }
-                ForEach(playlists) { playlist in
-                    let items = env.library.channels(in: playlist, limit: 16).map { PlayableItem(channel: $0, playlistName: playlist.name) }
-                    if !items.isEmpty {
-                        CarShelf(title: LocalizedStringResource(stringLiteral: playlist.name), seeAll: .playlist(playlist)) {
-                            ForEach(items) { item in CarTileButton(item: item, queue: nil) }
-                        }
                     }
                 }
                 if !videos.isEmpty {
@@ -87,6 +79,17 @@ struct CarHomeView: View {
                         }
                     }
                 }
+
+
+                ForEach(playlists) { playlist in
+                    let items = env.library.channels(in: playlist, limit: 16).map { PlayableItem(channel: $0, playlistName: playlist.name) }
+                    if !items.isEmpty {
+                        CarShelf(title: LocalizedStringResource(stringLiteral: playlist.name), seeAll: .playlist(playlist)) {
+                            ForEach(items) { item in CarTileButton(item: item, queue: nil) }
+                        }
+                    }
+                }
+
             }
             .padding(.top, Theme.s2)
             .padding(.bottom, m.gutter)
@@ -119,9 +122,29 @@ struct CarLibraryView: View {
     @Query(sort: [SortDescriptor(\VideoFolder.sortOrder)]) private var folders: [VideoFolder]
     @Query(filter: #Predicate<LocalVideo> { $0.folder == nil }) private var looseVideos: [LocalVideo]
 
+    @State private var query = ""
+    @State private var searchItems: [PlayableItem] = []
+
     var body: some View {
         let _ = env.vod.movies.count
         let _ = env.favorites.revision
+        Group {
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                CarGrid(items: searchItems)
+            } else {
+                sources
+            }
+        }
+        .carSearchable(text: $query, prompt: "Search library")
+        .task(id: query) {
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled else { return }
+            searchItems = env.library.searchChannels(query).map { PlayableItem(channel: $0, playlistName: $0.playlist?.name) }
+                + env.library.searchLocalVideos(query).map(PlayableItem.init(video:))
+        }
+    }
+
+    private var sources: some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: m.cardMin), spacing: Theme.s3)], spacing: Theme.s3) {
                 let favCount = env.favorites.favoriteItems().count
@@ -206,10 +229,13 @@ struct CarChannelGridView: View {
 struct CarVideosGridView: View {
     @Environment(AppEnvironment.self) private var env
     let folder: VideoFolder
+    @State private var query = ""
     var body: some View {
         let _ = env.library.revision
         let videos = folder.id == VideoFolder.loose.id ? env.library.localVideos().filter { $0.folder == nil } : env.library.localVideos(in: folder)
-        CarGrid(items: videos.map(PlayableItem.init(video:)), shuffleable: true)
+        let filtered = query.isEmpty ? videos : videos.filter { $0.title.localizedStandardContains(query) }
+        CarGrid(items: filtered.map(PlayableItem.init(video:)), shuffleable: true)
+            .carSearchable(text: $query, prompt: "Search videos")
     }
 }
 
@@ -465,10 +491,18 @@ struct CarSourceCard: View {
     let title: String
     let subtitle: String
     let tint: Color
+    var assetName: String? = nil
     var body: some View {
         HStack(spacing: Theme.s3) {
-            Image(systemName: symbol).font(.system(size: m.compact ? 20 : 26, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: m.compact ? 30 : 40)
+            Group {
+                if let assetName {
+                    Image(assetName).resizable().scaledToFit()
+                        .frame(width: m.compact ? 30 : 40, height: m.compact ? 30 : 40)
+                } else {
+                    Image(systemName: symbol).font(.system(size: m.compact ? 20 : 26, weight: .semibold)).foregroundStyle(tint)
+                        .frame(width: m.compact ? 30 : 40)
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: m.compact ? 15 : 18, weight: .semibold, design: .rounded)).foregroundStyle(Theme.ink).lineLimit(1)
                 Text(subtitle).font(.system(size: m.compact ? 11 : 13, weight: .medium)).foregroundStyle(Theme.inkMuted)
@@ -496,5 +530,54 @@ struct CarEmptyState: View {
         }
         .padding(m.gutter)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+
+private struct CarSearchModifier: ViewModifier {
+    @Binding var text: String
+    let prompt: String
+    var submit: () -> Void
+    @Environment(\.carMetrics) private var m
+    @State private var showsKeyboard = false
+    @Environment(CarKeyboardPresentation.self) private var keyboard: CarKeyboardPresentation?
+
+    func body(content: Content) -> some View {
+        VStack(spacing: Theme.s2) {
+            Button {
+                if let keyboard {
+                    keyboard.show(text: $text, placeholder: prompt, onGo: submit, onDone: {})
+                } else { showsKeyboard = true }
+            } label: {
+                HStack(spacing: Theme.s2) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.accent)
+                    Text(text.isEmpty ? prompt : text).lineLimit(1)
+                        .foregroundStyle(text.isEmpty ? Theme.inkMuted : Theme.ink)
+                    Spacer(minLength: 0)
+                    Image(systemName: "keyboard").foregroundStyle(Theme.inkMuted)
+                }
+                .font(.system(size: 15, weight: .medium))
+                .padding(.horizontal, Theme.s3).frame(height: 44)
+                .frame(maxWidth: .infinity)
+                .background(Theme.surface, in: Capsule()).contentShape(Rectangle())
+            }
+            .buttonStyle(CarPressStyle()).padding(.horizontal, m.gutter)
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .overlay(alignment: .bottom) {
+            if showsKeyboard {
+                CarBrowserKeyboard(text: $text, placeholder: prompt,
+                    onGo: { showsKeyboard = false; submit() },
+                    onDone: { showsKeyboard = false })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.ground)
+            }
+        }
+    }
+}
+
+extension View {
+    func carSearchable(text: Binding<String>, prompt: String, onSubmit: @escaping () -> Void = {}) -> some View {
+        modifier(CarSearchModifier(text: text, prompt: prompt, submit: onSubmit))
     }
 }

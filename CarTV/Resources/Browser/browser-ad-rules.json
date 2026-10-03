@@ -1,0 +1,320 @@
+[
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?doubleclick\\.net[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?googlesyndication\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?googleadservices\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?adservice\\.google\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?ads\\.youtube\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?amazon-adsystem\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?adnxs\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?adsrvr\\.org[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?criteo\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?criteo\\.net[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?taboola\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?outbrain\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?pubmatic\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?rubiconproject\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?openx\\.net[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?scorecardresearch\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?pangle\\.io[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?pangleglobal\\.com[:/]",
+      "load-type": [
+        "third-party"
+      ],
+      "resource-type": [
+        "script",
+        "image",
+        "style-sheet",
+        "svg-document"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": ".*",
+      "if-domain": [
+        "*youtube.com"
+      ]
+    },
+    "action": {
+      "type": "css-display-none",
+      "selector": "ytd-ad-slot-renderer, ytm-ad-slot-renderer, ytd-display-ad-renderer, ytm-promoted-sparkles-web-renderer, ytd-promoted-sparkles-web-renderer, .ytp-ad-overlay-container"
+    }
+  }
+]

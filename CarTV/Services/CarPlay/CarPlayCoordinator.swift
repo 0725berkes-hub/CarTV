@@ -169,6 +169,9 @@ extension CarPlayCoordinator: CPSessionConfigurationDelegate {
     }
 
     func sessionConfiguration(_ sessionConfiguration: CPSessionConfiguration, limitedUserInterfacesChanged limitedUserInterfaces: CPLimitableUserInterface) {
+        if #available(iOS 26.4, *) {
+            supportsVideoPlayback = sessionConfiguration.supportsVideoPlayback
+        }
         Log.carplay.info("Limited UI changed: \(limitedUserInterfaces.rawValue)")
     }
 }

@@ -60,6 +60,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
     // MARK: Style
 
+    func sceneWillResignActive(_ scene: UIScene) {
+        AppEnvironment.shared.browser.carSceneWillResignActive()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        AppEnvironment.shared.browser.carSceneDidBecomeActive()
+    }
+
     func contentStyleDidChange(_ contentStyle: UIUserInterfaceStyle) {
         AppEnvironment.shared.carPlay.contentStyle = contentStyle
     }
@@ -76,6 +84,14 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 /// addition to) the template scene. We treat it as another car surface.
 final class CarWindowSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        AppEnvironment.shared.browser.carSceneWillResignActive()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        AppEnvironment.shared.browser.carSceneDidBecomeActive()
+    }
 
     func scene(
         _ scene: UIScene,

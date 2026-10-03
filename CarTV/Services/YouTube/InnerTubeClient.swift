@@ -45,21 +45,50 @@ nonisolated final class InnerTubeClient: Sendable {
     static let tv = ClientProfile(name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER", version: "2.0",
         userAgent: "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15", clientId: 85)
 
-    private let session: URLSession
+    private let sessionLock = NSLock()
+    nonisolated(unsafe) private var session: URLSession
     private let base = URL(string: "https://www.youtube.com/youtubei/v1/")!
 
-    /// Discard visitor state that may have outlived a long app suspension.
+    /// Renew visitor state and connections after suspension or a network change.
     func resetTransientState() {
         visitorLock.withLock { cachedVisitorData = nil }
+        _ = renewSession()
     }
 
-    private init() {
+    private init() { session = Self.makeSession() }
+
+    private static func makeSession() -> URLSession {
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 20
         cfg.httpCookieStorage = nil
         cfg.httpShouldSetCookies = false
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: cfg)
+        return URLSession(configuration: cfg)
+    }
+
+    /// Preserve in-flight requests while retiring connections from an old network path.
+    private func renewSession(after failed: URLSession? = nil) -> URLSession {
+        let result = sessionLock.withLock { () -> (URLSession, URLSession?) in
+            if let failed, session !== failed { return (session, nil) }
+            let previous = session
+            session = Self.makeSession()
+            return (session, previous)
+        }
+        result.1?.finishTasksAndInvalidate()
+        return result.0
+    }
+
+    private func send(_ request: URLRequest, retryRead: Bool) async throws -> (Data, URLResponse) {
+        try Task.checkCancellation()
+        let current = sessionLock.withLock { session }
+        do { return try await current.data(for: request) }
+        catch let error as URLError where retryRead &&
+            [.networkConnectionLost, .cannotConnectToHost, .timedOut, .cannotFindHost].contains(error.code) {
+            try Task.checkCancellation()
+            Log.network.notice("YouTube transport \(error.code.rawValue); retrying read with renewed connections")
+            let renewed = renewSession(after: current)
+            return try await renewed.data(for: request)
+        }
     }
 
     // MARK: - Core request
@@ -92,7 +121,7 @@ nonisolated final class InnerTubeClient: Sendable {
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, resp): (Data, URLResponse)
-        do { (data, resp) = try await session.data(for: req) }
+        do { (data, resp) = try await send(req, retryRead: ["player", "browse", "search", "next", "visitor_id"].contains(endpoint)) }
         catch { Log.network.error("InnerTube \(endpoint, privacy: .public) transport: \(error.localizedDescription, privacy: .public)"); throw YTError.network(error.localizedDescription) }
         guard let http = resp as? HTTPURLResponse else { throw YTError.network("No response") }
         guard (200..<300).contains(http.statusCode) else {
@@ -127,7 +156,7 @@ nonisolated final class InnerTubeClient: Sendable {
                 Log.network.info("YT player OK via VISIONOS (HLS) for \(videoID, privacy: .public)")
                 return resp
             }
-            if resp.playabilityStatus == "LOGIN_REQUIRED" { cachedVisitorData = nil }   // visitor got flagged; mint a new one next time
+            if resp.playabilityStatus == "LOGIN_REQUIRED" { visitorLock.withLock { cachedVisitorData = nil } }   // visitor got flagged; mint a new one next time
             lastError = YTError.unavailable(resp.playabilityReason ?? "Not playable")
             Log.network.notice("YT visionOS not playable: \(resp.playabilityReason ?? "-", privacy: .public)")
         } catch {
@@ -213,12 +242,26 @@ nonisolated final class InnerTubeClient: Sendable {
         req.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
         if let vd = emb.visitorData { req.setValue(vd, forHTTPHeaderField: "X-Goog-Visitor-Id") }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, resp) = try await session.data(for: req)
+        let (data, resp) = try await send(req, retryRead: true)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw YTError.network("HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)")
         }
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw YTError.parse("Not a JSON object") }
         return try YTPlayerResponse(json: JSONObject(obj))
+    }
+
+    /// Account-bound playback beacons must come from the client's authenticated response,
+    /// independently of the anonymous client used to obtain a playable stream.
+    func historyTracking(videoID: String, cpn: String, accessToken: String) async throws -> (URL, URL) {
+        let json = try await call("player", client: Self.tvhtml5,
+            body: ["videoId": videoID, "cpn": cpn, "contentCheckOk": true, "racyCheckOk": true],
+            accessToken: accessToken)
+        let tracking = json["playbackTracking"]
+        guard let playback = tracking["videostatsPlaybackUrl"]["baseUrl"].string.flatMap(URL.init),
+              let watchtime = tracking["videostatsWatchtimeUrl"]["baseUrl"].string.flatMap(URL.init) else {
+            throw YTError.parse("Account playback tracking missing")
+        }
+        return (playback, watchtime)
     }
 
     // MARK: - Browse / search / next
@@ -271,7 +314,7 @@ nonisolated final class InnerTubeClient: Sendable {
     func suggestions(_ query: String) async throws -> [String] {
         var comps = URLComponents(string: "https://suggestqueries-clients6.youtube.com/complete/search")!
         comps.queryItems = [.init(name: "client", value: "youtube"), .init(name: "ds", value: "yt"), .init(name: "q", value: query), .init(name: "hl", value: "en")]
-        let (data, _) = try await session.data(from: comps.url!)
+        let (data, _) = try await send(URLRequest(url: comps.url!), retryRead: true)
         // Response is JSONP: window.google.ac.h([...])
         guard let text = String(data: data, encoding: .utf8), let open = text.firstIndex(of: "("), let close = text.lastIndex(of: ")") else { return [] }
         let json = String(text[text.index(after: open)..<close])

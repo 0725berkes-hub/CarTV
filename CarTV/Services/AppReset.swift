@@ -40,6 +40,7 @@ enum AppReset {
 
         // 4. Third-party sessions.
         env.youtube.auth.signOut()
+        env.browser.clear()
 
         // 5. Preferences — the whole suite, so no stray key survives.
         if let bundle = Bundle.main.bundleIdentifier {

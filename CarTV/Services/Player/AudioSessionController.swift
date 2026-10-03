@@ -25,12 +25,13 @@ nonisolated enum AudioSessionController {
         case routeLost            // the output we were playing to went away (BT dropped)
     }
 
+    nonisolated(unsafe) private static var configurationTask: Task<Void, Never>?
     nonisolated(unsafe) private static var observers: [NSObjectProtocol] = []
     nonisolated(unsafe) private static var handler: (@MainActor @Sendable (Event) -> Void)?
 
     static func configure(onEvent: @escaping @MainActor @Sendable (Event) -> Void) {
         handler = onEvent
-        Task.detached(priority: .userInitiated) {
+        configurationTask = Task.detached(priority: .userInitiated) {
             let session = AVAudioSession.sharedInstance()
             do {
                 try session.setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
@@ -48,27 +49,42 @@ nonisolated enum AudioSessionController {
         let session = AVAudioSession.sharedInstance()
         let log = Logger(subsystem: "kurdsoft.CarTV", category: "player")
 
-        observers.append(nc.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: nil) { note in
-            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
-            switch type {
-            case .began:
-                log.notice("Audio interruption began")
+        if #available(iOS 27.0, *) {
+            observers.append(nc.addObserver(forName: AVAudioSession.didBecomeInactiveNotification, object: session, queue: nil) { note in
+                guard let context = note.userInfo?[AVAudioSession.deactivationContextKey] as? AVAudioSession.DeactivationContext,
+                      context.source == .system, context.interruptionContext != nil else { return }
+                log.notice("Audio session interrupted by the system")
                 emit(.interruptionBegan)
-            case .ended:
-                let opts = AVAudioSession.InterruptionOptions(rawValue: note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
-                let resume = opts.contains(.shouldResume)
-                log.notice("Audio interruption ended, shouldResume=\(resume)")
-                emit(.interruptionEnded(shouldResume: resume))
-            @unknown default: break
-            }
-        })
+            })
+            observers.append(nc.addObserver(forName: AVAudioSession.resumptionRecommendationNotification, object: session, queue: nil) { note in
+                guard let context = note.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext else { return }
+                emit(.interruptionEnded(shouldResume: context.recommendation == .shouldResume))
+            })
+        } else {
+            observers.append(nc.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: nil) { note in
+                guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+                switch type {
+                case .began:
+                    log.notice("Audio interruption began")
+                    emit(.interruptionBegan)
+                case .ended:
+                    let opts = AVAudioSession.InterruptionOptions(rawValue: note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+                    let resume = opts.contains(.shouldResume)
+                    log.notice("Audio interruption ended, shouldResume=\(resume)")
+                    emit(.interruptionEnded(shouldResume: resume))
+                @unknown default: break
+                }
+            })
+        }
 
         observers.append(nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: session, queue: nil) { _ in
             log.error("Media services were reset")
             // Category is gone with the daemon; set it again before anyone plays.
-            try? session.setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
-            emit(.mediaServicesReset)
+            Task.detached(priority: .userInitiated) {
+                try? session.setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
+                emit(.mediaServicesReset)
+            }
         })
 
         observers.append(nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: nil) { note in
@@ -89,6 +105,7 @@ nonisolated enum AudioSessionController {
     /// Activate and report whether it worked. Playback must not start on `false`.
     @discardableResult
     static func activate() async -> Bool {
+        await configurationTask?.value
         do {
             if #available(iOS 27.0, *) {
                 try await AVAudioSession.sharedInstance().activate(options: [])

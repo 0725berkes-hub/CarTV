@@ -6,6 +6,7 @@ struct YouTubeTab: View {
     @Environment(AppEnvironment.self) private var env
     @State private var section: Section = .home
     @State private var query = ""
+    @FocusState private var searchFocused: Bool
     @State private var submitted: String?
     @State private var feedReload = 0
     @State private var currentWatchID: String?
@@ -63,7 +64,8 @@ struct YouTubeTab: View {
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("Search YouTube"))
             .searchSuggestions { YTSuggestions(query: query) { query = $0; submitted = $0 } }
-            .onSubmit(of: .search) { submitted = query }
+            .searchFocused($searchFocused)
+            .onSubmit(of: .search) { submitted = query; searchFocused = false }
             .onChange(of: query) { _, q in if q.isEmpty { submitted = nil } }
             .sheet(isPresented: $showSignIn) { YTAccountSheet() }
             .onChange(of: env.youtube.pendingSignInPrompt, initial: true) { _, pending in
@@ -72,14 +74,20 @@ struct YouTubeTab: View {
                     Task { try? await Task.sleep(for: .milliseconds(400)); showSignIn = true }
                 }
             }
-            .navigationDestination(for: YTVideo.self) { YTWatchView(video: $0) }
+            .navigationDestination(for: YTVideo.self) { video in
+                YTWatchView(video: video).onAppear { currentWatchID = video.id }
+            }
             .onChange(of: env.youtube.pendingWatchPage?.id, initial: true) { _, _ in
                 guard let v = env.youtube.pendingWatchPage else { return }
                 env.youtube.pendingWatchPage = nil
-                if currentWatchID != v.id { path.append(v); currentWatchID = v.id }
+                if currentWatchID != v.id {
+                    if currentWatchID != nil, !path.isEmpty { path.removeLast() }
+                    path.append(v); currentWatchID = v.id
+                }
             }
-            .navigationDestination(for: YTChannel.self) { YTChannelView(channel: $0) }
-            .navigationDestination(for: YTPlaylist.self) { YTPlaylistView(playlist: $0) }
+            .navigationDestination(for: YTChannel.self) { YTChannelView(channel: $0).onAppear { currentWatchID = nil } }
+            .navigationDestination(for: YTPlaylist.self) { YTPlaylistView(playlist: $0).onAppear { currentWatchID = nil } }
+            .onChange(of: path.count) { _, count in if count == 0 { currentWatchID = nil } }
         }
     }
 }
@@ -126,10 +134,11 @@ struct YTFeedView: View {
                             } else if let t = shelf.title {
                                 ShelfHeader(title: LocalizedStringResource(stringLiteral: t))
                                 ScrollView(.horizontal, showsIndicators: false) {
+                                    let videos = shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }
                                     LazyHStack(alignment: .top, spacing: Theme.s3) {
                                         ForEach(shelf.items) { item in
                                             switch item {
-                                            case .video(let v): YTVideoCard(video: v, queue: shelf.items.compactMap { if case .video(let x) = $0 { return x } else { return nil } }).frame(width: 260)
+                                            case .video(let v): YTVideoCard(video: v, queue: videos).frame(width: 260)
                                             case .playlist(let pl): YTPlaylistCard(playlist: pl).frame(width: 260)
                                             case .channel(let c): YTChannelRow(channel: c).frame(width: 260)
                                             }

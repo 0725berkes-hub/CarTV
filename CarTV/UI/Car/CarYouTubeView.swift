@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// YouTube on the car: big thumbnails, three feeds, recent searches (no typing
-/// while driving), and playlists. Tapping a video plays it with related as Up Next.
+/// Native YouTube feeds, playlists and touch-keyboard search.
 struct CarYouTubeView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(PlaybackController.self) private var playback
@@ -9,6 +8,8 @@ struct CarYouTubeView: View {
     @State private var feed: YouTubeService.Feed = .home
     @State private var page: YTPage?
     @State private var error: String?
+    @State private var query = ""
+    @State private var submitted = ""
 
     private struct FeedChip: Identifiable { let id: String; let feed: YouTubeService.Feed; let title: LocalizedStringResource; let symbol: String }
     private let feeds: [FeedChip] = [
@@ -27,6 +28,11 @@ struct CarYouTubeView: View {
                 }
             chips
         }
+        .carSearchable(text: $query, prompt: "Search YouTube") {
+            submitted = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            reload &+= 1
+        }
+        .onChange(of: query) { _, value in if value.isEmpty { submitted = "" } }
     }
 
     private var chipHeight: CGFloat { scrolled ? (m.compact ? 30 : 36) : (m.compact ? 36 : 42) }
@@ -35,7 +41,7 @@ struct CarYouTubeView: View {
         HStack(spacing: Theme.s2) {
             ForEach(feeds) { chip in
                 let selected = feed == chip.feed
-                Button { feed = chip.feed } label: {
+                Button { query = ""; submitted = ""; feed = chip.feed } label: {
                     HStack(spacing: 6) {
                         Image(systemName: chip.symbol)
                         if !scrolled { Text(chip.title) }
@@ -87,7 +93,7 @@ struct CarYouTubeView: View {
                                 }
                             }
                             // Pull the next page of every shelf that still has one.
-                            if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil || (feed == .home && refills < 6) {
+                            if page.shelves.contains(where: { $0.continuation != nil }) || page.continuation != nil || (submitted.isEmpty && feed == .home && refills < 6) {
                                 ProgressView().frame(maxWidth: .infinity, minHeight: 80).task { await loadMore() }
                             }
                         }
@@ -100,16 +106,24 @@ struct CarYouTubeView: View {
                 }
             }
         }
-        .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)-\(reload)") {
+        .task(id: "\(feed)-\(env.youtube.auth.isSignedIn)-\(reload)-\(submitted)") {
             page = nil; error = nil; refills = 0
             do {
-                let p = try await env.youtube.fetch(feed)
-                if p.flatItems.isEmpty { error = String(localized: "Nothing here yet. Sign in on your iPhone for your feed.") } else { page = p }
-            } catch { self.error = error.localizedDescription }
+                let p = try await fetchPage()
+                guard !Task.isCancelled else { return }
+                if p.flatItems.isEmpty {
+                    error = submitted.isEmpty ? String(localized: "Nothing here yet. Sign in on your iPhone for your feed.") : String(localized: "No results. Try another search.")
+                } else { page = p }
+            } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
 
     @State private var reload = 0
+
+    private func fetchPage(continuation: String? = nil) async throws -> YTPage {
+        if submitted.isEmpty { return try await env.youtube.fetch(feed, continuation: continuation) }
+        return try await env.youtube.search(submitted, continuation: continuation)
+    }
 
     private func loadMore() async {
         guard var p = page else { return }
@@ -130,14 +144,14 @@ struct CarYouTubeView: View {
             } else { p.shelves[i].continuation = nil }
         }
         if let c = p.continuation {
-            if let more = try? await env.youtube.fetch(feed, continuation: c) {
+            if let more = try? await fetchPage(continuation: c) {
                 let shelves = more.shelves.map { sh in var s = sh; s.items = s.items.filter { seen.insert($0.id).inserted }; return s }.filter { !$0.items.isEmpty }
                 p.shelves.append(contentsOf: shelves)
                 p.continuation = shelves.isEmpty ? nil : more.continuation
                 grew = grew || !shelves.isEmpty
             } else { p.continuation = nil }
         }
-        if !grew, feed == .home, refills < 6 {
+        if !grew, submitted.isEmpty, feed == .home, refills < 6 {
             // Everything exhausted → fresh Home batch, unseen only (YouTube's feed is endless).
             refills += 1
             if let more = try? await env.youtube.moreHome(excluding: seen), !more.flatItems.isEmpty {
@@ -146,6 +160,7 @@ struct CarYouTubeView: View {
             }
         }
         if !grew { p.continuation = nil; for i in p.shelves.indices { p.shelves[i].continuation = nil } }
+        guard !Task.isCancelled else { return }
         page = p
     }
     @State private var refills = 0
@@ -186,12 +201,10 @@ struct CarYTCard: View {
         guard !resolving else { return }
         resolving = true
         queue.forEach { env.youtube.remember($0) }
-        Task {
-            defer { resolving = false }
-            guard let r = try? await env.youtube.resolve(video) else { return }
-            let rest = queue.filter { $0.id != video.id }.compactMap { env.youtube.cachedStub($0.id) }
-            playback.play(r.item, queue: [r.item] + rest, origin: .car)
-        }
+        guard let item = env.youtube.cachedStub(video.id) else { resolving = false; return }
+        let rest = queue.filter { $0.id != video.id }.compactMap { env.youtube.cachedStub($0.id) }
+        playback.play(item, queue: [item] + rest, origin: .car)
+        resolving = false
     }
 }
 
@@ -251,7 +264,7 @@ struct CarYTWatchView: View {
         }
         .task(id: video.id) {
             info = try? await env.youtube.watch(video.id)
-            guard let info, let cur = playback.current, cur.ref.id == YouTubeService.uuid(for: video.id) else { return }
+            guard let info, let cur = playback.current, cur.ref.id == YouTubeService.uuid(for: video.id), playback.queue.count <= 1 else { return }
             info.related.forEach { env.youtube.remember($0) }
             playback.setQueue([cur] + info.related.compactMap { env.youtube.cachedStub($0.id) })
         }
@@ -259,10 +272,8 @@ struct CarYTWatchView: View {
 
     private func play() {
         env.youtube.remember(video)
-        Task {
-            guard let r = try? await env.youtube.resolve(video) else { return }
-            playback.play(r.item, queue: [r.item], origin: .car)
-        }
+        guard let item = env.youtube.cachedStub(video.id) else { return }
+        playback.play(item, queue: [item], origin: .car)
     }
 }
 
@@ -329,10 +340,8 @@ struct CarYTPlaylistView: View {
         let list = shuffle ? videos.shuffled() : videos
         guard let first = list.first else { return }
         list.forEach { env.youtube.remember($0) }
-        Task {
-            guard let r = try? await env.youtube.resolve(first) else { return }
-            playback.play(r.item, queue: [r.item] + list.dropFirst().compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
-            if shuffle { playback.shuffle = true }
-        }
+        guard let item = env.youtube.cachedStub(first.id) else { return }
+        playback.play(item, queue: [item] + list.dropFirst().compactMap { env.youtube.cachedStub($0.id) }, origin: .car)
+        if shuffle { playback.shuffle = true }
     }
 }

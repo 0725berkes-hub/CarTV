@@ -135,6 +135,7 @@ struct LocalVideosGridView: View {
     @State private var renaming: LocalVideo?
     @State private var renameText = ""
     @State private var query = ""
+    @FocusState private var searchFocused: Bool
     @State private var sort: Sort = .newest
 
     // Multi-select
@@ -233,6 +234,8 @@ struct LocalVideosGridView: View {
         .navigationSubtitle(selecting ? Text("") : Text("\(videos.count) videos"))
         .navigationBarBackButtonHidden(selecting)
         .searchable(text: $query, prompt: Text("Find a video"))
+        .searchFocused($searchFocused)
+        .onSubmit(of: .search) { searchFocused = false }
         .toolbar { toolbarContent(items: items, visible: list) }
         .safeAreaInset(edge: .bottom) { if selecting { selectionBar } }
         .overlay { if list.isEmpty { EmptyState(symbol: "film", title: query.isEmpty ? "No videos in that folder" : "No matches") } }

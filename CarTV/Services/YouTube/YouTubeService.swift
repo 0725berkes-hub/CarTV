@@ -175,7 +175,9 @@ final class YouTubeService {
     func refreshTransientState() {
         streamCache.removeAll()
         pageCache.removeAll()
-        HLSBuilder.purge(olderThan: 0)
+        let current = AppEnvironment.shared.playback.current
+        let playingID = current?.ref.kind == .youtube ? current.flatMap { Self.videoID(from: $0.ref.id) } : nil
+        HLSBuilder.purge(keepingVideoID: playingID)
         api.resetTransientState()
         Task { await YTChallengeSolver.shared.reset() }
         Log.network.info("YouTube transient session state refreshed")
@@ -229,12 +231,28 @@ final class YouTubeService {
 
     /// Resolves a video into a PlayableItem: HLS (native) → generated HLS → progressive MP4.
     func resolve(_ video: YTVideo, fresh: Bool = false) async throws -> Resolved {
-        if fresh { streamCache[video.id] = nil }
-        if let c = streamCache[video.id], c.expires > Date() {
-            let r = Resolved(item: item(for: video, url: c.url, subtitleTracks: c.captions), variants: c.variants.map { ($0.0, $0.1) }, captions: c.captions)
-            AppEnvironment.shared.playback.pendingQualityVariants = r.variants
-            history.begin(videoID: video.id, playbackURL: c.tracking.0, watchtimeURL: c.tracking.1)
-            return r
+        if fresh {
+            streamCache[video.id] = nil
+            _ = try? await LocalPlaylistServer.shared.restart()
+            api.resetTransientState()
+        }
+        if var c = streamCache[video.id], c.expires.timeIntervalSinceNow > 60 {
+            var usable = true
+            if c.url.host == "127.0.0.1" {
+                let file = HLSBuilder.root.appending(path: video.id).appending(path: c.url.lastPathComponent)
+                usable = FileManager.default.fileExists(atPath: file.path)
+                if usable {
+                    let base = try await LocalPlaylistServer.shared.start()
+                    c.url = base.appending(path: video.id).appending(path: c.url.lastPathComponent)
+                    streamCache[video.id] = c
+                }
+            }
+            if usable {
+                let r = Resolved(item: item(for: video, url: c.url, subtitleTracks: c.captions), variants: c.variants.map { ($0.0, $0.1) }, captions: c.captions)
+                AppEnvironment.shared.playback.pendingQualityVariants = r.variants
+                return r
+            }
+            streamCache[video.id] = nil
         }
         var resp = try await api.player(videoID: video.id, accessToken: await auth.token())
         let url: URL
@@ -270,7 +288,6 @@ final class YouTubeService {
         let captions = resp.captionTracks.map { SubtitleTrack(name: $0.name, languageCode: $0.lang, url: $0.url) }
         streamCache[video.id] = (url, resp.expiresAt, variants, captions, (resp.playbackURL, resp.watchtimeURL))
         AppEnvironment.shared.playback.pendingQualityVariants = variants.map { ($0.0, $0.1) }
-        history.begin(videoID: video.id, playbackURL: resp.playbackURL, watchtimeURL: resp.watchtimeURL)
         var enriched = video
         if enriched.title.isEmpty { enriched.title = resp.title }
         if enriched.channelName == nil { enriched.channelName = resp.author }
