@@ -1,0 +1,42 @@
+
+name: Build CarTV IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build CarTV
+        run: |
+          xcodebuild \
+            -project CarTV.xcodeproj \
+            -scheme CarTV \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find build/Build/Products/Release-iphoneos \
+            -maxdepth 1 -type d -name '*.app' | head -n 1)
+          test -n "$APP_PATH"
+          cp -R "$APP_PATH" Payload/
+          zip -r CarTV.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CarTV-IPA
+          path: CarTV.ipa
